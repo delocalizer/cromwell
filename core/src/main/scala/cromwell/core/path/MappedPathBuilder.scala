@@ -21,7 +21,7 @@ class MappedPathBuilder(prefix: String, mappedRoot: String) extends PathBuilder 
 }
 
 case class MappedPath(prefix: String, mappedRoot: NioPath, nioPath: NioPath) extends Path {
-  override protected def newPath(nioPath: NioPath): Path = MappedPath(prefix, mappedRoot, nioPath)
+  override protected def newPath(nioPath: NioPath, extra: Option[Any]): Path = MappedPath(prefix, mappedRoot, nioPath)
 
   override def pathAsString: String = nioPath.toString
 

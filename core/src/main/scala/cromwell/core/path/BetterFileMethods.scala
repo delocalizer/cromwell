@@ -429,7 +429,7 @@ trait BetterFileMethods {
   }
 
   final def listRelativePaths(implicit visitOptions: VisitOptions = VisitOptions.default): Paths =
-    betterFile.listRelativePaths(visitOptions).map(newPath)
+    betterFile.listRelativePaths(visitOptions).map(p => newPath(p, extra))
 
   final def isSamePathAs(that: Path): Boolean = betterFile.isSamePathAs(that.betterFile)
 

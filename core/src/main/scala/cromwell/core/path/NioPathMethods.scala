@@ -16,23 +16,23 @@ import scala.collection.JavaConverters._
 trait NioPathMethods {
   self: Path =>
 
-  final def subpath(beginIndex: Int, endIndex: Int): Path = newPath(nioPathPrivate.subpath(beginIndex, endIndex))
+  final def subpath(beginIndex: Int, endIndex: Int): Path = newPath(nioPathPrivate.subpath(beginIndex, endIndex), extra)
 
   final def toFile: java.io.File = nioPathPrivate.toFile
 
-  final def resolveSibling(other: Path): Path = newPath(nioPathPrivate.resolveSibling(other.nioPathPrivate))
+  final def resolveSibling(other: Path): Path = newPath(nioPathPrivate.resolveSibling(other.nioPathPrivate), extra)
 
-  final def resolveSibling(other: String): Path = newPath(nioPathPrivate.resolveSibling(other))
+  final def resolveSibling(other: String): Path = newPath(nioPathPrivate.resolveSibling(other), extra)
 
   final def isAbsolute: Boolean = nioPathPrivate.isAbsolute
 
-  final def getName(index: Int): Path = newPath(nioPathPrivate.getName(index))
+  final def getName(index: Int): Path = newPath(nioPathPrivate.getName(index), extra)
 
   final def getParent: Path = newPathOrNull(nioPathPrivate.getParent)
 
-  final def toAbsolutePath: Path = newPath(nioPathPrivate.toAbsolutePath)
+  final def toAbsolutePath: Path = newPath(nioPathPrivate.toAbsolutePath, extra)
 
-  final def relativize(other: Path): Path = newPath(nioPathPrivate.relativize(other.nioPathPrivate))
+  final def relativize(other: Path): Path = newPath(nioPathPrivate.relativize(other.nioPathPrivate), extra)
 
   final def getNameCount: Int = nioPathPrivate.getNameCount
 
@@ -49,21 +49,21 @@ trait NioPathMethods {
 
   final def getRoot: Path = newPathOrNull(nioPathPrivate.getRoot)
 
-  final def iterator(): java.util.Iterator[Path] = nioPathPrivate.iterator().asScala.map(newPath).asJava
+  final def iterator(): java.util.Iterator[Path] = nioPathPrivate.iterator().asScala.map(p => newPath(p, extra)).asJava
 
-  final def normalize(): Path = newPath(nioPathPrivate.normalize())
+  final def normalize(): Path = newPath(nioPathPrivate.normalize(), extra)
 
   final def endsWith(other: Path): Boolean = nioPathPrivate.endsWith(other.nioPathPrivate)
 
   final def endsWith(other: String): Boolean = nioPathPrivate.endsWith(other)
 
-  final def resolve(other: Path): Path = newPath(nioPathPrivate.resolve(other.nioPathPrivate))
+  final def resolve(other: Path): Path = newPath(nioPathPrivate.resolve(other.nioPathPrivate), extra)
 
-  final def resolve(other: String): Path = newPath(nioPathPrivate.resolve(other))
+  final def resolve(other: String): Path = newPath(nioPathPrivate.resolve(other), extra)
 
   final def startsWith(other: Path): Boolean = nioPathPrivate.startsWith(other.nioPathPrivate)
 
   final def startsWith(other: String): Boolean = nioPathPrivate.startsWith(other)
 
-  final def toRealPath(options: LinkOption*): Path = newPath(nioPathPrivate.toRealPath(options: _*))
+  final def toRealPath(options: LinkOption*): Path = newPath(nioPathPrivate.toRealPath(options: _*), extra)
 }
