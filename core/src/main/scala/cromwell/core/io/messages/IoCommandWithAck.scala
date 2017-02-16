@@ -1,11 +1,10 @@
 package cromwell.core.io.messages
 
-import java.nio.file.Path
-
 import better.files.File.OpenOptions
 import cromwell.core.io._
 import cromwell.core.retry.SimpleExponentialBackoff
 import cromwell.core.io.IoActorCommand._
+import cromwell.core.path.Path
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -18,7 +17,7 @@ sealed trait IoCommandWithAck[T] { this: IoCommand[T] =>
 /**
   * Copy source -> destination
   */
-case class CopyCommandMessage(source: Path,
+case class CopyCommandMessage(file: Path,
                               destination: Path,
                               overwrite: Boolean = true,
                               backoff: SimpleExponentialBackoff = defaultBackoff

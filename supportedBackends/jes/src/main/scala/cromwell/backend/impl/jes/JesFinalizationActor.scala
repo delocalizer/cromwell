@@ -1,5 +1,6 @@
 package cromwell.backend.impl.jes
 
+import akka.actor.ActorRef
 import cats.instances.future._
 import cats.syntax.functor._
 import cromwell.backend._
@@ -13,6 +14,7 @@ import scala.language.postfixOps
 case class JesFinalizationActorParams
 (
   workflowDescriptor: BackendWorkflowDescriptor,
+  ioActor: ActorRef,
   calls: Set[TaskCall],
   jesConfiguration: JesConfiguration,
   jobExecutionMap: JobExecutionMap,

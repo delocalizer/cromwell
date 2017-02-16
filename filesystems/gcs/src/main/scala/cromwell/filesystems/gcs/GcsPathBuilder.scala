@@ -60,8 +60,8 @@ class GcsPathBuilder(authMode: GoogleAuthMode,
   // that to be the project used by the StorageOptions Builder
   options.get("google_project") map storageOptionsBuilder.projectId
 
+
   protected val storageOptions = storageOptionsBuilder.build()
-  private val storage = storageOptions.service()
 
   // The CloudStorageFileSystemProvider constructor is not public. Currently the only way to obtain one is through a CloudStorageFileSystem
   // Moreover at this point we can use the same provider for all operations as we have usable credentials
@@ -77,11 +77,11 @@ class GcsPathBuilder(authMode: GoogleAuthMode,
    */
   def getHash(builtPath: Path): Try[String] = {
     builtPath match {
-      case GcsPath(path, _) => path match {
+      case GcsPath(path) => path match {
         case gcsPath: CloudStoragePath => Try(storageOptions.service().get(gcsPath.bucket(), gcsPath.toRealPath().toString).crc32c())
         case proxy: PathProxy =>
           val gcsPath = proxy.unbox(classOf[CloudStoragePath]).get
-          Try(storage.get(gcsPath.bucket(), gcsPath.toRealPath().toString).crc32c())
+          Try(storageOptions.service().get(gcsPath.bucket(), gcsPath.toRealPath().toString).crc32c())
         case other => Failure(new IllegalArgumentException(s"$other is not a CloudStoragePath"))
       }
       case other => Failure(new IllegalArgumentException(s"$other is not a GcsPath"))
@@ -94,7 +94,7 @@ class GcsPathBuilder(authMode: GoogleAuthMode,
     Try {
       val uri = getUri(string)
       GcsPathBuilder.checkValid(uri)
-      GcsPath(provider.getPath(uri), Option(storage))
+      GcsPath(provider.getPath(uri))
     }
   }
 
@@ -113,8 +113,8 @@ class RetryableGcsPathBuilder(authMode: GoogleAuthMode,
   override def getHash(path: Path) = provider.withRetry(() => super.getHash(path))
 }
 
-case class GcsPath private[gcs](nioPath: NioPath, override val extra: Option[Any] = None) extends Path {
-  override protected def newPath(nioPath: NioPath, extra: Option[Any]): GcsPath = GcsPath(nioPath, extra)
+case class GcsPath private[gcs](nioPath: NioPath) extends Path {
+  override protected def newPath(nioPath: NioPath): GcsPath = GcsPath(nioPath)
 
   override def pathAsString: String = java.net.URLDecoder.decode(nioPath.toUri.toString, "UTF-8")
 

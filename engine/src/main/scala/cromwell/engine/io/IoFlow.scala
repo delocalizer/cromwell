@@ -1,57 +1,81 @@
 package cromwell.engine.io
 
-import akka.NotUsed
+import akka.stream.ThrottleMode
 import akka.stream.scaladsl.Flow
-import better.files.File
-import better.files.File._
 import com.google.cloud.storage.StorageException
-import cromwell.core.io.CopyCommand
+import cromwell.core.io._
 import cromwell.engine.io.IoActor.IoCommandContext
 
 import scala.concurrent.{ExecutionContext, Future}
 
-class IoFlow(implicit ec: ExecutionContext) {
-  def build: Flow[IoCommandContext, (Option[Any], IoCommandContext), NotUsed] = {
-    Flow[IoCommandContext].mapAsyncUnordered[(Option[Any], IoCommandContext)](10)(processCommand)
-  }
-
-  protected final val processCommand: IoCommandContext => Future[(Option[Any], IoCommandContext)] = commandContext => {
-    val operationResult = commandContext.command match {
-      case copyCommand: CopyCommand => copy(copyCommand)
+class IoFlow(parallelism: Int, throttleOptions: Option[Throttle] = None)(implicit ec: ExecutionContext) {
+  
+  private val processCommand: IoCommandContext => Future[(Option[Any], IoCommandContext)] = commandContext => {
+    val operationResult = commandContext.request match {
+      case copyCommand: CopyCommand => copy(copyCommand) map copyCommand.success
+      case writeCommand: WriteCommand => write(writeCommand) map writeCommand.success
+      case deleteCommand: DeleteCommand => delete(deleteCommand) map deleteCommand.success
+      case sizeCommand: SizeCommand => size(sizeCommand) map sizeCommand.success
+      case readAsStringCommand: ReadAsStringCommand => readAsString(readAsStringCommand) map readAsStringCommand.success
       case _ => Future.failed(new NotImplementedError("Method not implemented"))
     }
     
-    operationResult map { result => mapSuccess(commandContext, result) } recoverWith recoverFailure(commandContext)
+    operationResult map { (_, commandContext) } recoverWith recoverFailure(commandContext)
   }
   
+  private val processFlow = Flow[IoCommandContext].mapAsyncUnordered[(Option[Any], IoCommandContext)](parallelism)(processCommand)
+  
+  val flow = throttleOptions match {
+    case Some(options) => 
+      val throttleFlow = Flow[IoCommandContext].throttle(options.elements, options.per, options.maximumBurst, ThrottleMode.Shaping)
+      throttleFlow.via(processFlow)
+    case None => processFlow
+  }
+  
+  private def copy(copy: CopyCommand) = Future {
+    copy.file.copyTo(copy.destination, copy.overwrite)
+    ()
+  }
+
+  private def write(write: WriteCommand) = Future {
+    write.file.write(write.content)
+    ()
+  }
+  
+  private def delete(delete: DeleteCommand) = Future {
+    delete.file.delete(delete.swallowIOExceptions)
+    ()
+  }
+
+  private def readAsString(read: ReadAsStringCommand) = Future {
+    read.file.contentAsString
+  }
+  
+  private def size(size: SizeCommand) = Future {
+    size.file.size
+  }
+
+  /**
+    * Returns true if the failure can be retried
+    */
   protected def isRetryable(failure: Throwable): Boolean = failure match {
     case gcs: StorageException => gcs.retryable()
     case _ => false
   }
   
-  private def copy(copy: CopyCommand): Future[Option[Any]] = Future {
-    File(copy.source).copyTo(copy.destination, copy.overwrite)
-  } map { _ => copy.success(()) }
-
-
   /**
-    * Utility method to make a pair of the value and context
-    */
-  private def mapSuccess(commandContext: IoCommandContext, value: Option[Any]) = (value, commandContext)
-
-  /**
-    * Utility method to wrap a failure into a IoFailure
+    * Utility method to wrap a failure into a IoFailure or IoRetry
     */
   private def recoverFailure(commandContext: IoCommandContext): PartialFunction[Throwable, Future[(Option[Any], IoCommandContext)]] = {
-    case failure if isRetryable(failure) && commandContext.command.timeBeforeNextTry.isDefined => Future.successful(
+    case failure if isRetryable(failure) && commandContext.request.timeBeforeNextTry.isDefined => Future.successful(
       (
-        commandContext.command.retry(commandContext.command.timeBeforeNextTry.get),
+        commandContext.request.retry(commandContext.request.timeBeforeNextTry.get),
         commandContext
       )
     )
     case failure => Future.successful(
       (
-        commandContext.command.fail(failure),
+        commandContext.request.fail(failure),
         commandContext
       )
     )

@@ -27,6 +27,8 @@ object IoActorCommand {
 sealed trait IoCommand[T] {
 
   def backoff: SimpleExponentialBackoff
+  
+  def file: Path
 
   /**
     * Current value of the backoff duration or None if the command should not be retried
@@ -62,7 +64,7 @@ sealed trait IoCommand[T] {
   * Copy source -> destination
   */
 trait CopyCommand extends IoCommand[Unit] {
-  def source: Path
+  def file: Path
   def destination: Path
   def overwrite: Boolean
 }

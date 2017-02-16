@@ -67,14 +67,14 @@ trait StandardLifecycleActorFactory extends BackendLifecycleActorFactory {
   lazy val finalizationActorClassOption: Option[Class[_ <: StandardFinalizationActor]] =
     Option(classOf[StandardFinalizationActor])
 
-  override def workflowInitializationActorProps(workflowDescriptor: BackendWorkflowDescriptor, calls: Set[TaskCall],
+  override def workflowInitializationActorProps(workflowDescriptor: BackendWorkflowDescriptor, ioActor: ActorRef, calls: Set[TaskCall],
                                                 serviceRegistryActor: ActorRef): Option[Props] = {
-    val params = workflowInitializationActorParams(workflowDescriptor, calls, serviceRegistryActor)
+    val params = workflowInitializationActorParams(workflowDescriptor, ioActor, calls, serviceRegistryActor)
     val props = Props(initializationActorClass, params).withDispatcher(Dispatcher.BackendDispatcher)
     Option(props)
   }
 
-  def workflowInitializationActorParams(workflowDescriptor: BackendWorkflowDescriptor, calls: Set[TaskCall],
+  def workflowInitializationActorParams(workflowDescriptor: BackendWorkflowDescriptor, ioActor: ActorRef, calls: Set[TaskCall],
                                         serviceRegistryActor: ActorRef): StandardInitializationActorParams = {
     DefaultInitializationActorParams(workflowDescriptor, calls, serviceRegistryActor, configurationDescriptor)
   }
@@ -118,17 +118,17 @@ trait StandardLifecycleActorFactory extends BackendLifecycleActorFactory {
       jobDescriptor, initializationDataOption, serviceRegistryActor, configurationDescriptor)
   }
 
-  override def workflowFinalizationActorProps(workflowDescriptor: BackendWorkflowDescriptor, calls: Set[TaskCall],
+  override def workflowFinalizationActorProps(workflowDescriptor: BackendWorkflowDescriptor, ioActor: ActorRef, calls: Set[TaskCall],
                                               jobExecutionMap: JobExecutionMap, workflowOutputs: CallOutputs,
                                               initializationData: Option[BackendInitializationData]): Option[Props] = {
     finalizationActorClassOption map { finalizationActorClass =>
-      val params = workflowFinalizationActorParams(workflowDescriptor, calls, jobExecutionMap, workflowOutputs,
+      val params = workflowFinalizationActorParams(workflowDescriptor, ioActor, calls, jobExecutionMap, workflowOutputs,
         initializationData)
       Props(finalizationActorClass, params).withDispatcher(BackendDispatcher)
     }
   }
 
-  def workflowFinalizationActorParams(workflowDescriptor: BackendWorkflowDescriptor, calls: Set[TaskCall],
+  def workflowFinalizationActorParams(workflowDescriptor: BackendWorkflowDescriptor, ioActor: ActorRef, calls: Set[TaskCall],
                                       jobExecutionMap: JobExecutionMap, workflowOutputs: CallOutputs,
                                       initializationDataOption: Option[BackendInitializationData]):
   StandardFinalizationActorParams = {

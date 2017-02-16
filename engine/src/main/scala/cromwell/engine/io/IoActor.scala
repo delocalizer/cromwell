@@ -1,40 +1,41 @@
 package cromwell.engine.io
 
-import akka.actor.{Actor, ActorRef}
-import akka.stream.scaladsl.{Sink, Source}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.stream.scaladsl.{Sink, Source, SourceQueueWithComplete}
 import akka.stream.{ActorMaterializer, OverflowStrategy}
+import cromwell.core.StreamActorHelper
+import cromwell.core.StreamIntegration.StreamContext
 import cromwell.core.io.IoCommand
 import cromwell.core.io.messages.IoRetry
-import cromwell.engine.io.IoActor.IoCommandContext
+import cromwell.engine.io.IoActor._
 
-import scala.concurrent.ExecutionContext
 import scala.language.existentials
 
-object IoActor {
-  case class IoCommandContext(command: IoCommand[_], replyTo: ActorRef)
-}
-
-class IoActor(implicit materializer: ActorMaterializer, ec: ExecutionContext) extends Actor {
-  val source = Source.queue[IoCommandContext](200, OverflowStrategy.dropNew)
-  val flow = new IoFlow().build
-  val sink = Sink.foreach[(Option[Any], IoCommandContext)] {
+final class IoActor(queueSize: Int, ioFlow: IoFlow)(implicit materializer: ActorMaterializer) extends Actor with ActorLogging with StreamActorHelper {
+  private val source = Source.queue[IoCommandContext](queueSize, OverflowStrategy.dropNew)
+  private val flow = ioFlow.flow
+  private val sink = Sink.foreach[(Option[Any], IoCommandContext)] {
     case (Some(response: IoRetry[_]), commandContext) => 
-      context.system.scheduler.scheduleOnce(response.waitTime, self, commandContext.command.withNextBackoff)
+      context.system.scheduler.scheduleOnce(response.waitTime, self, commandContext.request.withNextBackoff)
       ()
     case (Some(response), commandContext) => commandContext.replyTo ! response
     case _ =>
   }
-    
-  val stream = source
+  
+  private val stream: SourceQueueWithComplete[IoCommandContext] = source
     .via(flow)
     .to(sink)
     .run()
-  
-  override def receive: Receive = {
+
+  override def actorReceive: Receive = {
     case command: IoCommand[_] => 
       val replyTo = sender()
       val commandContext= IoCommandContext(command, replyTo)
-      stream offer commandContext
-      ()
+      sendToStream(commandContext, stream)
   }
+}
+
+object IoActor {
+  case class IoCommandContext(request: IoCommand[_], replyTo: ActorRef) extends StreamContext
+  def props(queueSize: Int, flow: IoFlow)(implicit materializer: ActorMaterializer) = Props(new IoActor(queueSize, flow))
 }

@@ -18,12 +18,6 @@ trait PathBuilder {
   * @see [[cromwell.core.path.EvenBetterPathMethods]]
   */
 trait Path extends PathObjectMethods with NioPathMethods with BetterFileMethods with EvenBetterPathMethods {
-
-  /**
-    * Extra information that is useful to be carried along the path.
-    */
-  protected def extra: Option[Any] = None
-  
   /**
     * A reference to the underlying nioPath, used to create new java.nio.Path's that will then be sent to newPath
     * for wrapping.
@@ -40,7 +34,7 @@ trait Path extends PathObjectMethods with NioPathMethods with BetterFileMethods 
     * @param nioPath The nioPath to be wrapped.
     * @return A new Path.
     */
-  protected def newPath(nioPath: NioPath, extra: Option[Any]): Path
+  protected def newPath(nioPath: NioPath): Path
 
   /**
     * Returns the path as a string. This path must be usable by this path builder or another in the list to build paths,
@@ -122,5 +116,5 @@ trait Path extends PathObjectMethods with NioPathMethods with BetterFileMethods 
   private[path] final def betterFile: better.files.File = nioPathPrivate
 
   // Some Path methods return null.
-  private[path] final def newPathOrNull(nioPath: NioPath) = Option(nioPath).map(p => newPath(p, extra)).orNull
+  private[path] final def newPathOrNull(nioPath: NioPath) = Option(nioPath).map(newPath).orNull
 }

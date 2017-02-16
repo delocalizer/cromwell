@@ -1,11 +1,16 @@
 package cromwell.server
 
-import akka.actor.SupervisorStrategy.Escalate
+import akka.actor.SupervisorStrategy.{Escalate, Restart}
 import akka.actor.{Actor, ActorInitializationException, ActorRef, OneForOneStrategy}
 import akka.event.Logging
 import akka.routing.RoundRobinPool
+import akka.stream.ActorMaterializer
 import com.typesafe.config.ConfigFactory
+import cromwell.core.Dispatcher
+import cromwell.core.StreamIntegration.EnqueuingException
+import cromwell.core.io.Throttle
 import cromwell.engine.backend.{BackendSingletonCollection, CromwellBackends}
+import cromwell.engine.io.{IoActor, IoFlow}
 import cromwell.engine.workflow.WorkflowManagerActor
 import cromwell.engine.workflow.lifecycle.CopyWorkflowLogsActor
 import cromwell.engine.workflow.lifecycle.execution.callcaching.{CallCache, CallCacheReadActor}
@@ -15,6 +20,10 @@ import cromwell.jobstore.{JobStore, JobStoreActor, SqlJobStore}
 import cromwell.services.{ServiceRegistryActor, SingletonServicesStore}
 import cromwell.subworkflowstore.{SqlSubWorkflowStore, SubWorkflowStoreActor}
 import net.ceedubs.ficus.Ficus._
+
+import scala.concurrent.duration._
+import scala.language.postfixOps
+import scala.concurrent.duration.FiniteDuration
 /**
   * An actor which serves as the lord protector for the rest of Cromwell, allowing us to have more fine grain
   * control on top level supervision, etc.
@@ -32,8 +41,12 @@ import net.ceedubs.ficus.Ficus._
   private val config = ConfigFactory.load()
   val serverMode: Boolean
 
+  implicit val materializer = ActorMaterializer()
+  lazy val ioEc = context.system.dispatchers.lookup(Dispatcher.IoDispatcher)
+  
+  lazy val systemConfig = config.getConfig("system")
   lazy val serviceRegistryActor: ActorRef = context.actorOf(ServiceRegistryActor.props(config), "ServiceRegistryActor")
-  lazy val numberOfWorkflowLogCopyWorkers = config.getConfig("system").as[Option[Int]]("number-of-workflow-log-copy-workers").getOrElse(DefaultNumberOfWorkflowLogCopyWorkers)
+  lazy val numberOfWorkflowLogCopyWorkers = systemConfig.as[Option[Int]]("number-of-workflow-log-copy-workers").getOrElse(DefaultNumberOfWorkflowLogCopyWorkers)
 
   lazy val workflowLogCopyRouter: ActorRef = context.actorOf(RoundRobinPool(numberOfWorkflowLogCopyWorkers)
       .withSupervisorStrategy(CopyWorkflowLogsActor.strategy)
@@ -48,6 +61,13 @@ import net.ceedubs.ficus.Ficus._
 
   lazy val subWorkflowStore = new SqlSubWorkflowStore(SingletonServicesStore.databaseInterface)
   lazy val subWorkflowStoreActor = context.actorOf(SubWorkflowStoreActor.props(subWorkflowStore), "SubWorkflowStoreActor")
+  
+  lazy val ioParallelism = systemConfig.as[Option[Int]]("io.parallelism").getOrElse(100000)
+  lazy val throttleElements = systemConfig.as[Option[Int]]("io.number-of-requests").getOrElse(100000)
+  lazy val throttlePer = systemConfig.as[Option[FiniteDuration]]("io.per").getOrElse(100 seconds)
+  lazy val ioThrottle = Throttle(throttleElements, throttlePer, throttleElements)
+  lazy val ioFlow = new IoFlow(ioParallelism, Option(ioThrottle))(ioEc)
+  lazy val ioActor = context.actorOf(IoActor.props(1000, ioFlow).withDispatcher(Dispatcher.IoDispatcher))
 
   lazy val callCache: CallCache = new CallCache(SingletonServicesStore.databaseInterface)
   lazy val callCacheReadActor = context.actorOf(RoundRobinPool(25)
@@ -65,7 +85,7 @@ import net.ceedubs.ficus.Ficus._
 
   lazy val workflowManagerActor = context.actorOf(
     WorkflowManagerActor.props(
-      workflowStoreActor, serviceRegistryActor, workflowLogCopyRouter, jobStoreActor, subWorkflowStoreActor, callCacheReadActor,
+      workflowStoreActor, ioActor, serviceRegistryActor, workflowLogCopyRouter, jobStoreActor, subWorkflowStoreActor, callCacheReadActor,
       jobExecutionTokenDispenserActor, backendSingletonCollection, abortJobsOnTerminate, serverMode),
     "WorkflowManagerActor")
 
@@ -79,6 +99,7 @@ import net.ceedubs.ficus.Ficus._
     */
   override val supervisorStrategy = OneForOneStrategy() {
     case actorInitializationException: ActorInitializationException => Escalate
+    case enqueuing: EnqueuingException => Restart
     case t => super.supervisorStrategy.decider.applyOrElse(t, (_: Any) => Escalate)
   }
 }

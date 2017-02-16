@@ -136,6 +136,7 @@ object WorkflowActor {
             startMode: StartMode,
             wdlSource: WorkflowSourceFilesCollection,
             conf: Config,
+            ioActor: ActorRef,
             serviceRegistryActor: ActorRef,
             workflowLogCopyRouter: ActorRef,
             jobStoreActor: ActorRef,
@@ -144,7 +145,7 @@ object WorkflowActor {
             jobTokenDispenserActor: ActorRef,
             backendSingletonCollection: BackendSingletonCollection,
             serverMode: Boolean): Props = {
-    Props(new WorkflowActor(workflowId, startMode, wdlSource, conf, serviceRegistryActor, workflowLogCopyRouter,
+    Props(new WorkflowActor(workflowId, startMode, wdlSource, conf, ioActor, serviceRegistryActor, workflowLogCopyRouter,
       jobStoreActor, subWorkflowStoreActor, callCacheReadActor, jobTokenDispenserActor, backendSingletonCollection, serverMode)).withDispatcher(EngineDispatcher)
   }
 }
@@ -156,6 +157,7 @@ class WorkflowActor(val workflowId: WorkflowId,
                     startMode: StartMode,
                     workflowSources: WorkflowSourceFilesCollection,
                     conf: Config,
+                    ioActor: ActorRef,
                     override val serviceRegistryActor: ActorRef,
                     workflowLogCopyRouter: ActorRef,
                     jobStoreActor: ActorRef,
@@ -187,7 +189,7 @@ class WorkflowActor(val workflowId: WorkflowId,
 
   when(MaterializingWorkflowDescriptorState) {
     case Event(MaterializeWorkflowDescriptorSuccessResponse(workflowDescriptor), data) =>
-      val initializerActor = context.actorOf(WorkflowInitializationActor.props(workflowId, workflowDescriptor, serviceRegistryActor),
+      val initializerActor = context.actorOf(WorkflowInitializationActor.props(workflowId, workflowDescriptor, ioActor, serviceRegistryActor),
         name = s"WorkflowInitializationActor-$workflowId")
       initializerActor ! StartInitializationCommand
       goto(InitializingWorkflowState) using data.copy(currentLifecycleStateActor = Option(initializerActor), workflowDescriptor = Option(workflowDescriptor))
@@ -207,6 +209,7 @@ class WorkflowActor(val workflowId: WorkflowId,
 
       val executionActor = context.actorOf(WorkflowExecutionActor.props(
         workflowDescriptor,
+        ioActor,
         serviceRegistryActor,
         jobStoreActor,
         subWorkflowStoreActor,
@@ -332,7 +335,7 @@ class WorkflowActor(val workflowId: WorkflowId,
   }
 
   private[workflow] def makeFinalizationActor(workflowDescriptor: EngineWorkflowDescriptor, jobExecutionMap: JobExecutionMap, workflowOutputs: CallOutputs) = {
-    context.actorOf(WorkflowFinalizationActor.props(workflowId, workflowDescriptor, jobExecutionMap, workflowOutputs, stateData.initializationData), name = s"WorkflowFinalizationActor")
+    context.actorOf(WorkflowFinalizationActor.props(workflowId, workflowDescriptor, ioActor, jobExecutionMap, workflowOutputs, stateData.initializationData), name = s"WorkflowFinalizationActor")
   }
   /**
     * Run finalization actor and transition to FinalizingWorkflowState.
