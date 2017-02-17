@@ -1,6 +1,6 @@
 package cromwell.engine.workflow
 
-import akka.actor.SupervisorStrategy.Escalate
+import akka.actor.SupervisorStrategy.Stop
 import akka.actor._
 import com.typesafe.config.Config
 import cromwell.backend._
@@ -16,8 +16,8 @@ import cromwell.engine.workflow.lifecycle.MaterializeWorkflowDescriptorActor.{Ma
 import cromwell.engine.workflow.lifecycle.WorkflowFinalizationActor.{StartFinalizationCommand, WorkflowFinalizationFailedResponse, WorkflowFinalizationSucceededResponse}
 import cromwell.engine.workflow.lifecycle.WorkflowInitializationActor.{StartInitializationCommand, WorkflowInitializationFailedResponse, WorkflowInitializationSucceededResponse}
 import cromwell.engine.workflow.lifecycle._
-import cromwell.engine.workflow.lifecycle.execution.{WorkflowExecutionActor, WorkflowMetadataHelper}
 import cromwell.engine.workflow.lifecycle.execution.WorkflowExecutionActor._
+import cromwell.engine.workflow.lifecycle.execution.{WorkflowExecutionActor, WorkflowMetadataHelper}
 import cromwell.subworkflowstore.SubWorkflowStoreActor.WorkflowComplete
 import cromwell.webservice.EngineStatsActor
 import wdl4s.{LocallyQualifiedName => _}
@@ -125,6 +125,8 @@ object WorkflowActor {
       lastStateReached = StateCheckpoint(WorkflowUnstartedState))
   }
 
+  case class CurrentLifecycleActorDied(throwable: Throwable)
+
   /**
     * Mode in which the workflow should be started:
     */
@@ -173,7 +175,11 @@ class WorkflowActor(val workflowId: WorkflowId,
 
   pushCurrentStateToMetadataService(workflowId, WorkflowUnstartedState.workflowState)
   
-  override def supervisorStrategy: SupervisorStrategy = OneForOneStrategy() { case _ => Escalate }
+  override def supervisorStrategy: SupervisorStrategy = OneForOneStrategy() {
+    case failure =>
+      self ! CurrentLifecycleActorDied(failure)
+      Stop
+  }
 
   when(WorkflowUnstartedState) {
     case Event(StartWorkflowCommand, _) =>
@@ -258,6 +264,7 @@ class WorkflowActor(val workflowId: WorkflowId,
   when(WorkflowSucceededState) { FSM.NullFunction }
 
   whenUnhandled {
+    case Event(CurrentLifecycleActorDied(reason), data) => handleLifecycleActorDied(reason, data)
     case Event(AbortWorkflowCommand, WorkflowActorData(Some(actor), _, _, _)) =>
       actor ! EngineLifecycleActorAbortCommand
       goto(WorkflowAbortingState)
@@ -319,6 +326,17 @@ class WorkflowActor(val workflowId: WorkflowId,
           }
         }
       context stop self
+  }
+  
+  private def handleLifecycleActorDied(reason: Throwable, data: WorkflowActorData) = {
+    def failWorkflow = goto(WorkflowFailedState) using data.copy(lastStateReached = StateCheckpoint(stateName, Option(List(reason))))
+    stateName match {
+      case FinalizingWorkflowState => failWorkflow
+      case otherState => data.workflowDescriptor match {
+        case Some(workflowDescriptor) => finalizeWorkflow(data, workflowDescriptor, Map.empty, Map.empty, Option(List(reason)))
+        case None => failWorkflow
+      }
+    }
   }
 
   private def finalizationSucceeded(data: WorkflowActorData) = {
