@@ -8,6 +8,7 @@ import wdl4s.expression.{NoFunctions, WdlStandardLibraryFunctions}
 class RetryableBackendLifecycleActorFactory(name: String, configurationDescriptor: BackendConfigurationDescriptor)
   extends BackendLifecycleActorFactory {
   override def workflowInitializationActorProps(workflowDescriptor: BackendWorkflowDescriptor,
+                                                ioActor: ActorRef,
                                                 calls: Set[TaskCall],
                                                 serviceRegistryActor: ActorRef): Option[Props] = None
 

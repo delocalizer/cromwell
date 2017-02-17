@@ -46,6 +46,7 @@ import scala.util.matching.Regex
 case class TestBackendLifecycleActorFactory(configurationDescriptor: BackendConfigurationDescriptor)
   extends BackendLifecycleActorFactory {
   override def workflowInitializationActorProps(workflowDescriptor: BackendWorkflowDescriptor,
+                                                ioActor: ActorRef,
                                                 calls: Set[TaskCall],
                                                 serviceRegistryActor: ActorRef): Option[Props] = None
 

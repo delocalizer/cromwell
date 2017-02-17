@@ -1,22 +1,21 @@
 package cromwell.backend.impl.jes
 
-import java.io.IOException
-
 import akka.actor.ActorRef
+import com.google.cloud.storage.contrib.nio.CloudStorageOptions
 import cromwell.backend.impl.jes.authentication.{GcsLocalizing, JesAuthInformation}
-import cromwell.backend.impl.jes.io._
 import cromwell.backend.standard.{StandardInitializationActor, StandardInitializationActorParams, StandardValidatedRuntimeAttributesBuilder}
 import cromwell.backend.{BackendConfigurationDescriptor, BackendInitializationData, BackendWorkflowDescriptor}
+import cromwell.core.io.promise.WriteCommandPromise
 import cromwell.filesystems.gcs.auth.{ClientSecrets, GoogleAuthMode}
 import spray.json.JsObject
 import wdl4s.TaskCall
 
-import scala.concurrent.Future
-import scala.util.Try
+import scala.concurrent.{Future, Promise}
 
 case class JesInitializationActorParams
 (
   workflowDescriptor: BackendWorkflowDescriptor,
+  ioActor: ActorRef,
   calls: Set[TaskCall],
   jesConfiguration: JesConfiguration,
   serviceRegistryActor: ActorRef
@@ -28,6 +27,7 @@ class JesInitializationActor(jesParams: JesInitializationActorParams)
   extends StandardInitializationActor(jesParams) {
 
   private val jesConfiguration = jesParams.jesConfiguration
+  private lazy val uploadAuthFilePromise = Promise[Unit]
 
   override lazy val runtimeAttributesBuilder: StandardValidatedRuntimeAttributesBuilder =
     JesRuntimeAttributes.runtimeAttributesBuilder(jesConfiguration)
@@ -48,21 +48,18 @@ class JesInitializationActor(jesParams: JesInitializationActorParams)
   override lazy val initializationData: JesBackendInitializationData =
     JesBackendInitializationData(workflowPaths, runtimeAttributesBuilder, jesConfiguration, genomics)
 
-  override def beforeAll(): Future[Option[BackendInitializationData]] = Future.fromTry(Try {
+  override def beforeAll(): Future[Option[BackendInitializationData]] = {
     if (jesConfiguration.needAuthFileUpload) writeAuthenticationFile(workflowPaths)
     publishWorkflowRoot(workflowPaths.workflowRoot.pathAsString)
     Option(initializationData)
-  })
+    uploadAuthFilePromise.future map { _ => Option(initializationData) }
+  }
 
   private def writeAuthenticationFile(workflowPath: JesWorkflowPaths): Unit = {
     generateAuthJson(jesConfiguration.dockerCredentials, refreshTokenAuth) foreach { content =>
       val path = workflowPath.gcsAuthFilePath
       workflowLogger.info(s"Creating authentication file for workflow ${workflowDescriptor.id} at \n $path")
-      try {
-        path.writeAsJson(content)
-      } catch {
-        case exception: Exception => throw new IOException("Failed to upload authentication file", exception)
-      }
+      jesParams.ioActor ! WriteCommandPromise(path, content, Seq(CloudStorageOptions.withMimeType("application/json")))(uploadAuthFilePromise)
     }
   }
 

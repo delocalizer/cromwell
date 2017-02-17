@@ -76,7 +76,7 @@ trait StandardLifecycleActorFactory extends BackendLifecycleActorFactory {
 
   def workflowInitializationActorParams(workflowDescriptor: BackendWorkflowDescriptor, ioActor: ActorRef, calls: Set[TaskCall],
                                         serviceRegistryActor: ActorRef): StandardInitializationActorParams = {
-    DefaultInitializationActorParams(workflowDescriptor, calls, serviceRegistryActor, configurationDescriptor)
+    DefaultInitializationActorParams(workflowDescriptor, ioActor, calls, serviceRegistryActor, configurationDescriptor)
   }
 
   override def jobExecutionActorProps(jobDescriptor: BackendJobDescriptor,

@@ -25,6 +25,7 @@ case class DefaultBackendJobExecutionActor(override val jobDescriptor: BackendJo
 class DefaultBackendLifecycleActorFactory(name: String, configurationDescriptor: BackendConfigurationDescriptor)
   extends BackendLifecycleActorFactory {
   override def workflowInitializationActorProps(workflowDescriptor: BackendWorkflowDescriptor,
+                                                ioActor: ActorRef,
                                                 calls: Set[TaskCall],
                                                 serviceRegistryActor: ActorRef): Option[Props] = None
 

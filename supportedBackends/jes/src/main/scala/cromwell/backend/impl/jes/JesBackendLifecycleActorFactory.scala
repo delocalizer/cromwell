@@ -25,7 +25,7 @@ case class JesBackendLifecycleActorFactory(name: String, configurationDescriptor
 
   override def workflowInitializationActorParams(workflowDescriptor: BackendWorkflowDescriptor, ioActor: ActorRef, calls: Set[TaskCall],
                                                  serviceRegistryActor: ActorRef): StandardInitializationActorParams = {
-    JesInitializationActorParams(workflowDescriptor, calls, jesConfiguration, serviceRegistryActor)
+    JesInitializationActorParams(workflowDescriptor, ioActor, calls, jesConfiguration, serviceRegistryActor)
   }
 
   override def workflowFinalizationActorParams(workflowDescriptor: BackendWorkflowDescriptor, ioActor: ActorRef, calls: Set[TaskCall],
