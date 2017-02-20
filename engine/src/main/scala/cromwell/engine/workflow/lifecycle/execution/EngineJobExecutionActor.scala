@@ -57,14 +57,19 @@ class EngineJobExecutionActor(replyTo: ActorRef,
   private[execution] var executionToken: Option[JobExecutionToken] = None
 
   private val effectiveCallCachingKey = CacheMetadataKeyPrefix + "effectiveCallCachingMode"
+  private val callCachingReadResultMetadataKey = CacheMetadataKeyPrefix + "result"
+  private val callCachingHitResultMetadataKey = CacheMetadataKeyPrefix + "hit"
+  private var eventList: Seq[ExecutionEvent] = Seq(ExecutionEvent(stateName.toString))
 
   implicit val ec: ExecutionContext = context.dispatcher
 
-  log.debug(s"$tag: $effectiveCallCachingKey: $effectiveCallCachingMode")
-  writeCallCachingModeToMetadata()
+  override def preStart() = {
+    log.debug(s"$tag: $effectiveCallCachingKey: $effectiveCallCachingMode")
+    writeCallCachingModeToMetadata()
+    super.preStart()
+  }
 
   startWith(Pending, NoData)
-  private var eventList: Seq[ExecutionEvent] = Seq(ExecutionEvent(stateName.toString))
 
   // When Pending, the FSM always has NoData
   when(Pending) {
@@ -123,8 +128,6 @@ class EngineJobExecutionActor(replyTo: ActorRef,
       respondAndStop(JobFailedNonRetryableResponse(jobKey, throwable, None))
   }
 
-  private val callCachingReadResultMetadataKey = CacheMetadataKeyPrefix + "result"
-  private val callCachingHitResultMetadataKey = CacheMetadataKeyPrefix + "hit"
   when(CheckingCallCache) {
     case Event(CacheMiss, data: ResponsePendingData) =>
       writeToMetadata(Map(
