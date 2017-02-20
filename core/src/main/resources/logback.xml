@@ -77,7 +77,7 @@
     </else>
   </if>
 
-  <root level="${LOG_LEVEL}">
+  <root level="DEBUG">
     <appender-ref ref="STANDARD_APPENDER" />
     <appender-ref ref="PRETTY_APPENDER" />
     <appender-ref ref="FILEROLLER_APPENDER" />
