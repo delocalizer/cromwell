@@ -185,7 +185,9 @@ class MaterializeWorkflowDescriptorActor(serviceRegistryActor: ActorRef,
     // Workflow name:
     val nameEvent = MetadataEvent(MetadataKey(workflowIdForLogging, None, WorkflowMetadataKeys.Name), MetadataValue(name))
 
+    workflowLogger.info(s"Sending workflow name to registry actor: $nameEvent")
     serviceRegistryActor ! PutMetadataAction(nameEvent)
+    workflowLogger.info("workflow name sent to registry actor")
   }
 
   private def buildWorkflowDescriptor(id: WorkflowId,

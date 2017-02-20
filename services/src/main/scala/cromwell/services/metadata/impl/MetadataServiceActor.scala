@@ -75,7 +75,11 @@ case class MetadataServiceActor(serviceConfig: Config, globalConfig: Config)
   }
 
   def receive = {
-    case action@PutMetadataAction(events) => writeActor forward action
+    case action@PutMetadataAction(events) => 
+      if (events.exists(_.key.key.contains("workflowName"))) {
+        log.info(s"[MetadataServiceActor] received workflow name event: ${events}")
+      }
+      writeActor forward action
     case v: ValidateWorkflowIdAndExecute => validateWorkflowId(v)
     case action: ReadAction => readActor forward action
     case RefreshSummary => summaryActor foreach { _ ! SummarizeMetadata(sender()) }
