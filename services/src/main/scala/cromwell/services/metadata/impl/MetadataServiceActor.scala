@@ -2,7 +2,8 @@ package cromwell.services.metadata.impl
 
 import java.util.UUID
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.actor.SupervisorStrategy.Restart
+import akka.actor.{Actor, ActorLogging, ActorRef, OneForOneStrategy, Props}
 import com.typesafe.config.{Config, ConfigFactory}
 import cromwell.core.Dispatcher.ServiceDispatcher
 import cromwell.core.WorkflowId
@@ -29,6 +30,13 @@ object MetadataServiceActor {
 case class MetadataServiceActor(serviceConfig: Config, globalConfig: Config)
   extends Actor with ActorLogging with MetadataDatabaseAccess with SingletonServicesStore {
 
+  override val supervisorStrategy = OneForOneStrategy() {
+    case e: Exception =>
+      val failedActorName = if (sender() == readActor) "Read" else "Write"
+      log.error(s"The $failedActorName Metadata Actor died. Restarting it.", e)
+      Restart
+  }
+  
   private val summaryActor: Option[ActorRef] = buildSummaryActor
 
   val readActor = context.actorOf(ReadMetadataActor.props(), "read-metadata-actor")
@@ -75,11 +83,7 @@ case class MetadataServiceActor(serviceConfig: Config, globalConfig: Config)
   }
 
   def receive = {
-    case action@PutMetadataAction(events) => 
-      if (events.exists(_.key.key.contains("workflowName"))) {
-        log.info(s"[MetadataServiceActor] received workflow name event: ${events}")
-      }
-      writeActor forward action
+    case action@PutMetadataAction(events) => writeActor forward action
     case v: ValidateWorkflowIdAndExecute => validateWorkflowId(v)
     case action: ReadAction => readActor forward action
     case RefreshSummary => summaryActor foreach { _ ! SummarizeMetadata(sender()) }

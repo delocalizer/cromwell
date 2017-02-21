@@ -27,9 +27,6 @@ final case class WriteMetadataActor(batchRate: Int, flushRate: FiniteDuration)
 
   when(WaitingToWrite) {
     case Event(PutMetadataAction(events), curData) =>
-      if (events.exists(_.key.key.contains("workflowName"))) {
-        log.info(s"[WriteActor] received workflow name event: ${events}")
-      }
       curData.addEvents(events) match {
         case data@HasEvents(e) if e.length > batchRate => goto(WritingToDb) using data
         case e => stay using e
@@ -47,9 +44,6 @@ final case class WriteMetadataActor(batchRate: Int, flushRate: FiniteDuration)
       goto(WaitingToWrite) using NoEvents
     case Event(FlushBatchToDb, HasEvents(e)) =>
       log.debug("Flushing {} metadata events to the DB", e.length)
-      if (e.exists(_.key.key.contains("workflowName"))) {
-        log.info(s"[WriteActor] Flushing to DB : ${e}")
-      }
       addMetadataEvents(e.toVector) onComplete {
         case Success(_) => self ! DbWriteComplete
         case Failure(regerts) =>
@@ -90,9 +84,6 @@ object WriteMetadataActor {
           }
           HasEvents(newEvents)
         case None => this
-      }
-      if (newEvents.exists(_.key.key.contains("workflowName"))) {
-        println(s"[WriteActorData] added workflowName in newEvents data: ${res}")
       }
       res
     }
