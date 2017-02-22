@@ -5,7 +5,7 @@ import akka.pattern.pipe
 import akka.stream.QueueOfferResult
 import akka.stream.QueueOfferResult._
 import akka.stream.scaladsl.SourceQueueWithComplete
-import cromwell.core.StreamClientHelper.StreamClientTimers
+import cromwell.core.BackpressuredActorHelper.StreamClientTimers
 import cromwell.core.StreamIntegration._
 
 import scala.concurrent.duration.FiniteDuration
@@ -63,7 +63,7 @@ trait StreamActorHelper { this: Actor with ActorLogging =>
   }
 }
 
-object StreamClientHelper {
+object BackpressuredActorHelper {
   private case class StreamClientTimers(backoffTimer: Cancellable, timeoutTimer: Cancellable) {
     def cancelTimers() = {
       backoffTimer.cancel()
@@ -72,7 +72,7 @@ object StreamClientHelper {
   }
 }
 
-trait StreamClientHelper { this: Actor with ActorLogging =>
+trait BackpressuredActorHelper { this: Actor with ActorLogging =>
   private var requestsMap = Map.empty[Any, StreamClientTimers]
   
   protected def lostTimeout: FiniteDuration
@@ -85,12 +85,16 @@ trait StreamClientHelper { this: Actor with ActorLogging =>
     case Backpressure(request) => 
   }
 
-  // Schedule a DockerNoResponseTimeout message to be sent to self
-  private final def newRequestLostTimer = akka.pattern.after(lostTimeout)
+  private final def newRequestLostTimer(message: Any, actor: ActorRef) = {
+    context.system.scheduler.schedule(lostTimeout, lostTimeout, actor, message)
+  }
   // Schedule a DockerHashRequest to be sent to the docker hashing actor
-  private final def newBackPressureTimer(dockerHashRequest: DockerHashRequest) = context.system.scheduler.scheduleOnce(backpressureWaitTime, dockerHashingActor, dockerHashRequest)(ec, self)
+  private final def newBackPressureTimer(message: Any, actor: ActorRef) = {
+    context.system.scheduler.scheduleOnce(backpressureTimeout, actor, message)
+  }
   
   private def handleBackpressure(request: Any) = {
     requestsMap.get(request) foreach { _.cancelTimers() }
+    
   }
 }

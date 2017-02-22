@@ -49,10 +49,13 @@ class JesInitializationActor(jesParams: JesInitializationActorParams)
     JesBackendInitializationData(workflowPaths, runtimeAttributesBuilder, jesConfiguration, genomics)
 
   override def beforeAll(): Future[Option[BackendInitializationData]] = {
-    if (jesConfiguration.needAuthFileUpload) writeAuthenticationFile(workflowPaths)
     publishWorkflowRoot(workflowPaths.workflowRoot.pathAsString)
-    Option(initializationData)
-    uploadAuthFilePromise.future map { _ => Option(initializationData) }
+    if (jesConfiguration.needAuthFileUpload) {
+      writeAuthenticationFile(workflowPaths)
+      uploadAuthFilePromise.future map { _ => Option(initializationData) }
+    } else {
+      Future.successful(Option(initializationData))
+    }
   }
 
   private def writeAuthenticationFile(workflowPath: JesWorkflowPaths): Unit = {
