@@ -3,8 +3,6 @@ package cromwell.core.actor
 import akka.actor.ActorRef
 import akka.stream.QueueOfferResult
 
-import scala.language.postfixOps
-
 object StreamIntegration {
   trait StreamContext {
     def replyTo: ActorRef

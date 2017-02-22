@@ -10,7 +10,7 @@ import scala.language.postfixOps
 object RobustActorHelper {
   case class NoResponseTimeout(robustActorRequest: RobustActorMessage)
   case class RobustActorMessage(message: Any, to: ActorRef)
-  private case class StreamClientTimers(backpressureTimer: Option[Cancellable], timeoutTimer: Cancellable, requestLostCounter: Int) {
+  private [actor] case class StreamClientTimers(backpressureTimer: Option[Cancellable], timeoutTimer: Cancellable, requestLostCounter: Int) {
     def cancelTimers() = {
       backpressureTimer foreach { _.cancel() }
       timeoutTimer.cancel()
