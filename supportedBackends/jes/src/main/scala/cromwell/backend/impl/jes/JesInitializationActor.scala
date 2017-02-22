@@ -7,8 +7,8 @@ import com.google.cloud.storage.contrib.nio.CloudStorageOptions
 import cromwell.backend.impl.jes.authentication.{GcsLocalizing, JesAuthInformation}
 import cromwell.backend.standard.{StandardInitializationActor, StandardInitializationActorParams, StandardValidatedRuntimeAttributesBuilder}
 import cromwell.backend.{BackendConfigurationDescriptor, BackendInitializationData, BackendWorkflowDescriptor}
-import cromwell.core.BackpressuredActorHelper
-import cromwell.core.BackpressuredActorHelper.RobustActorMessage
+import cromwell.core.actor.RobustActorHelper
+import cromwell.core.actor.RobustActorHelper.RobustActorMessage
 import cromwell.core.io.promise.WriteCommandPromise
 import cromwell.filesystems.gcs.auth.{ClientSecrets, GoogleAuthMode}
 import spray.json.JsObject
@@ -28,7 +28,7 @@ case class JesInitializationActorParams
 }
 
 class JesInitializationActor(jesParams: JesInitializationActorParams)
-  extends StandardInitializationActor(jesParams) with BackpressuredActorHelper {
+  extends StandardInitializationActor(jesParams) with RobustActorHelper {
 
   private val jesConfiguration = jesParams.jesConfiguration
   private lazy val uploadAuthFilePromise = Promise[Unit]
@@ -83,5 +83,6 @@ class JesInitializationActor(jesParams: JesInitializationActorParams)
 
   override protected def onServiceUnreachable(robustActorMessage: RobustActorMessage): Unit = {
     uploadAuthFilePromise.tryFailure(new IOException("Failed to upload authentication file. IoActor is unresponsive."))
+    ()
   }
 }

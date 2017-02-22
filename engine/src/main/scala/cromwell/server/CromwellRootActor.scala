@@ -7,7 +7,7 @@ import akka.routing.RoundRobinPool
 import akka.stream.ActorMaterializer
 import com.typesafe.config.ConfigFactory
 import cromwell.core.Dispatcher
-import cromwell.core.StreamIntegration.EnqueuingException
+import cromwell.core.actor.StreamIntegration.EnqueuingException
 import cromwell.core.io.Throttle
 import cromwell.engine.backend.{BackendSingletonCollection, CromwellBackends}
 import cromwell.engine.io.{IoActor, IoFlow}

@@ -1,12 +1,13 @@
-package cromwell.core
+package cromwell.core.actor
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props}
 import akka.stream.QueueOfferResult.QueueClosed
 import akka.stream.scaladsl.{Sink, Source}
 import akka.stream.{ActorMaterializer, OverflowStrategy, QueueOfferResult}
 import akka.testkit.{ImplicitSender, TestActorRef}
-import cromwell.core.StreamIntegration._
-import cromwell.core.TestStreamActor.{TestStreamActorCommand, TestStreamActorContext}
+import cromwell.core.TestKitSuite
+import cromwell.core.actor.StreamIntegration._
+import cromwell.core.actor.TestStreamActor.{TestStreamActorCommand, TestStreamActorContext}
 import org.scalatest.{FlatSpecLike, Matchers}
 
 import scala.concurrent.duration._

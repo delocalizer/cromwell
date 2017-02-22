@@ -1,70 +1,13 @@
-package cromwell.core
+package cromwell.core.actor
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Cancellable}
-import akka.pattern.pipe
-import akka.stream.QueueOfferResult
-import akka.stream.QueueOfferResult._
-import akka.stream.scaladsl.SourceQueueWithComplete
-import cromwell.core.BackpressuredActorHelper.{NoResponseTimeout, RobustActorMessage, StreamClientTimers}
-import cromwell.core.StreamIntegration._
+import cromwell.core.actor.RobustActorHelper._
+import cromwell.core.actor.StreamIntegration._
 
 import scala.concurrent.duration.{FiniteDuration, _}
-import scala.concurrent.{ExecutionContext, Future}
 import scala.language.postfixOps
 
-object StreamIntegration {
-  trait StreamContext {
-    def replyTo: ActorRef
-    def request: Any
-  }
-  case class EnqueueResponse(response: QueueOfferResult, request: StreamContext)
-  case class Backpressure(request: Any)
-  case class FailedToEnqueue(failure: Throwable, request: StreamContext)
-  case class EnqueuingException(throwable: Throwable) extends RuntimeException(throwable)
-}
-
-trait StreamActorHelper { this: Actor with ActorLogging =>
-
-  implicit val ec: ExecutionContext = context.system.dispatcher
-
-  protected def actorReceive: Receive
-
-  override def receive = streamReceive.orElse(actorReceive)
-
-  def sendToStream[T <: StreamContext](commandContext: T, stream: SourceQueueWithComplete[T]) = {
-    val enqueue = stream offer commandContext map { result =>
-      EnqueueResponse(result, commandContext)
-    } recoverWith {
-      case t => Future.successful(FailedToEnqueue(t, commandContext))
-    }
-
-    pipe(enqueue) to self
-    ()
-  }
-
-  private def streamReceive: Receive = {
-    case EnqueueResponse(Enqueued, commandContext) => // All good !
-    case EnqueueResponse(Dropped, commandContext) => commandContext.replyTo ! Backpressure(commandContext.request)
-    // In any of the below case, the stream is in a state where it will not be able to receive new elements.
-    // This means something blew off so we can just restart the actor to re-instantiate a new stream
-    case EnqueueResponse(QueueClosed, commandContext) =>
-      val exception = new RuntimeException(s"Failed to enqueue request ${commandContext.request}. Queue was closed")
-      logAndRestart(exception, commandContext)
-    case EnqueueResponse(QueueOfferResult.Failure(failure), commandContext) =>
-      logAndRestart(failure, commandContext)
-    case FailedToEnqueue(throwable, commandContext) =>
-      logAndRestart(throwable, commandContext)
-  }
-
-  private def logAndRestart(throwable: Throwable, commandContext: StreamContext) = {
-    commandContext.replyTo ! FailedToEnqueue(throwable, commandContext)
-    log.warning("Failed to process request: {}", throwable.getMessage)
-    // Throw the exception that will be caught by supervisor and restart the actor
-    throw EnqueuingException(throwable)
-  }
-}
-
-object BackpressuredActorHelper {
+object RobustActorHelper {
   case class NoResponseTimeout(robustActorRequest: RobustActorMessage)
   case class RobustActorMessage(message: Any, to: ActorRef)
   private case class StreamClientTimers(backpressureTimer: Option[Cancellable], timeoutTimer: Cancellable, requestLostCounter: Int) {
@@ -75,13 +18,14 @@ object BackpressuredActorHelper {
   }
 }
 
-trait BackpressuredActorHelper { this: Actor with ActorLogging =>
-  private var requestsMap = Map.empty[RobustActorMessage, StreamClientTimers]
-  
+trait RobustActorHelper { this: Actor with ActorLogging =>
+  private [actor] var requestsMap = Map.empty[RobustActorMessage, StreamClientTimers]
+  private implicit val backpressureEc = context.dispatcher
+
   protected def requestLostAttempts: Int = 2
   protected def lostTimeout: FiniteDuration = 20 seconds
   protected def backpressureTimeout: FiniteDuration = 5 seconds
-  
+
   protected def onServiceUnreachable(robustActorMessage: RobustActorMessage): Unit
 
   /**
@@ -90,7 +34,7 @@ trait BackpressuredActorHelper { this: Actor with ActorLogging =>
     */
   protected final def responseReceived(originalMessage: Any) = {
     findEntryFor(originalMessage) match {
-      case Some((robustMessage, timers)) => 
+      case Some((robustMessage, timers)) =>
         timers.cancelTimers()
         requestsMap = requestsMap - robustMessage
       case None =>
@@ -132,7 +76,7 @@ trait BackpressuredActorHelper { this: Actor with ActorLogging =>
   private final def newBackPressureTimer(robustActorMessage: RobustActorMessage) = {
     context.system.scheduler.scheduleOnce(backpressureTimeout, robustActorMessage.to, robustActorMessage.message)
   }
-  
+
   /*
    * Try to find an entry for this message in the map.
    */
@@ -141,10 +85,10 @@ trait BackpressuredActorHelper { this: Actor with ActorLogging =>
       case (robustMessage @ RobustActorMessage(message, _), timers) if message == request => (robustMessage, timers)
     }
   }
-  
+
   private def handleBackpressure(request: Any) = {
     findEntryFor(request) match {
-      case Some((robustMessage, timers)) => 
+      case Some((robustMessage, timers)) =>
         timers.cancelTimers()
         // Create new timers, including an exponential backoff timer
         val newTimers = timers.copy(
@@ -157,12 +101,12 @@ trait BackpressuredActorHelper { this: Actor with ActorLogging =>
         log.warning("Received a backpressure message from a request that was never sent. Ignoring...")
     }
   }
-  
+
   private def handleRequestLost(robustMessage: RobustActorMessage) = {
     requestsMap.get(robustMessage) match {
       case Some(timers) =>
         timers.cancelTimers()
-        
+
         if (timers.requestLostCounter < requestLostAttempts) {
           // Create a new requestLost timer and increment requestLostCounter
           val newTimers = StreamClientTimers(
