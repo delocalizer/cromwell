@@ -1,57 +1,78 @@
 package cromwell.engine.io
 
+import akka.actor.{ActorRef, Scheduler}
 import akka.stream.ThrottleMode
 import akka.stream.scaladsl.Flow
 import com.google.cloud.storage.StorageException
 import cromwell.core.io._
 import cromwell.engine.io.IoActor.IoCommandContext
+import cromwell.engine.io.IoFlow.IoResult
 
 import scala.concurrent.{ExecutionContext, Future}
 
-class IoFlow(parallelism: Int, throttleOptions: Option[Throttle] = None)(implicit ec: ExecutionContext) {
-  
-  private val processCommand: IoCommandContext => Future[(Option[Any], IoCommandContext)] = commandContext => {
-    val operationResult = commandContext.request match {
-      case copyCommand: CopyCommand => copy(copyCommand) map copyCommand.success
-      case writeCommand: WriteCommand => write(writeCommand) map writeCommand.success
-      case deleteCommand: DeleteCommand => delete(deleteCommand) map deleteCommand.success
-      case sizeCommand: SizeCommand => size(sizeCommand) map sizeCommand.success
-      case readAsStringCommand: ReadAsStringCommand => readAsString(readAsStringCommand) map readAsStringCommand.success
-      case _ => Future.failed(new NotImplementedError("Method not implemented"))
+object IoFlow {
+  type IoResult = (IoAck[_], ActorRef)
+}
+
+class IoFlow(parallelism: Int, scheduler: Scheduler, throttleOptions: Option[Throttle] = None)(implicit ec: ExecutionContext) {
+  private val processCommand: IoCommandContext[_] => Future[IoResult] = commandContext => {
+    val operationResult: Future[IoAck[_]] = commandContext.request match {
+      case singleCommand: IoSingleCommand[_] => handleSingleCommand(singleCommand)
+      case batchCommand: IoBatchCommand[_] => throw new NotImplementedError("Batch not implemented yet") // handleBatchCommand(batchCommand)
     }
     
-    operationResult map { (_, commandContext) } recoverWith recoverFailure(commandContext)
+    operationResult map { (_, commandContext.replyTo) } recoverWith recoverFailure(commandContext)
   }
   
-  private val processFlow = Flow[IoCommandContext].mapAsyncUnordered[(Option[Any], IoCommandContext)](parallelism)(processCommand)
+  private def handleSingleCommand(ioSingleCommand: IoSingleCommand[_]) = {
+    ioSingleCommand match {
+      case copyCommand: IoCopyCommand => copy(copyCommand) map copyCommand.success
+      case writeCommand: IoWriteCommand => write(writeCommand) map writeCommand.success
+      case deleteCommand: IoDeleteCommand => delete(deleteCommand) map deleteCommand.success
+      case sizeCommand: IoSizeCommand => size(sizeCommand) map sizeCommand.success
+      case readAsStringCommand: IoContentAsStringCommand => readAsString(readAsStringCommand) map readAsStringCommand.success
+      case _ => Future.failed(new NotImplementedError("Method not implemented"))
+    }
+  }
+  
+//  private def handleBatchCommand(batchedCommand: IoBatchCommand[_]) = Future {
+//    batchedCommand.execute()
+//    val (success, failure) = batchedCommand.get partition(_.isSuccess)
+//    if (failure.isEmpty) success map { _.get }
+//    else {
+//      
+//    }
+//  }
+  
+  private val processFlow = Flow[IoCommandContext[_]].mapAsyncUnordered[IoResult](parallelism)(processCommand)
   
   val flow = throttleOptions match {
     case Some(options) => 
-      val throttleFlow = Flow[IoCommandContext].throttle(options.elements, options.per, options.maximumBurst, ThrottleMode.Shaping)
+      val throttleFlow = Flow[IoCommandContext[_]].throttle(options.elements, options.per, options.maximumBurst, ThrottleMode.Shaping)
       throttleFlow.via(processFlow)
     case None => processFlow
   }
   
-  private def copy(copy: CopyCommand) = Future {
+  private def copy(copy: IoCopyCommand) = Future {
     copy.file.copyTo(copy.destination, copy.overwrite)
     ()
   }
 
-  private def write(write: WriteCommand) = Future {
+  private def write(write: IoWriteCommand) = Future {
     write.file.write(write.content)
     ()
   }
   
-  private def delete(delete: DeleteCommand) = Future {
+  private def delete(delete: IoDeleteCommand) = Future {
     delete.file.delete(delete.swallowIOExceptions)
     ()
   }
 
-  private def readAsString(read: ReadAsStringCommand) = Future {
+  private def readAsString(read: IoContentAsStringCommand) = Future {
     read.file.contentAsString
   }
   
-  private def size(size: SizeCommand) = Future {
+  private def size(size: IoSizeCommand) = Future {
     size.file.size
   }
 
@@ -63,21 +84,22 @@ class IoFlow(parallelism: Int, throttleOptions: Option[Throttle] = None)(implici
     case _ => false
   }
   
-  /**
-    * Utility method to wrap a failure into a IoFailure or IoRetry
-    */
-  private def recoverFailure(commandContext: IoCommandContext): PartialFunction[Throwable, Future[(Option[Any], IoCommandContext)]] = {
-    case failure if isRetryable(failure) && commandContext.request.timeBeforeNextTry.isDefined => Future.successful(
-      (
-        commandContext.request.retry(commandContext.request.timeBeforeNextTry.get),
-        commandContext
-      )
-    )
-    case failure => Future.successful(
-      (
-        commandContext.request.fail(failure),
-        commandContext
-      )
-    )
+  private def recoverFailure(commandContext: IoCommandContext[_]): PartialFunction[Throwable, Future[IoResult]] = {
+    case failure if isRetryable(failure) => recoverRetryableFailure(commandContext, failure)
+    case failure => Future.successful(commandContext.fail(failure))
   }
+  
+  private def recoverRetryableFailure(commandContext: IoCommandContext[_], failure: Throwable): Future[IoResult] = {
+    commandContext.request.timeBeforeNextTry match {
+      case Some(waitTime) =>
+        commandContext.request match {
+          case singleCommand: IoSingleCommand[_] =>
+            akka.pattern.after(waitTime, scheduler)(processCommand(commandContext.withNextBackoff))
+          case batchCommand: IoBatchCommand[_] =>
+            akka.pattern.after(waitTime, scheduler)(processCommand(commandContext.withNextBackoff))
+        }
+      case None => Future.successful(commandContext.fail(failure))
+    }
+  }
+  
 }

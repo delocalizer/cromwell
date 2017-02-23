@@ -38,7 +38,7 @@ object TestLocalAsyncJobExecutionActor {
       classOf[SharedFileSystemExpressionFunctions])
     val asyncClass = classOf[TestLocalAsyncJobExecutionActor]
 
-    val params = DefaultStandardSyncExecutionActorParams(SharedFileSystemAsyncJobExecutionActor.JobIdKey, emptyActor,
+    val params = DefaultStandardSyncExecutionActorParams(SharedFileSystemAsyncJobExecutionActor.JobIdKey, emptyActor, emptyActor,
       jobDescriptor, configurationDescriptor, Option(initializationData), None, asyncClass)
 
     TestActorRef(new StandardSyncExecutionActor(params))

@@ -122,6 +122,7 @@ object Dependencies {
     "com.google.guava" % "guava" % "20.0",
     "com.typesafe.akka" %% "akka-http-core" % akkaHttpV,
     "com.typesafe.akka" %% "akka-stream-testkit" % akkaHttpV,
+    "com.chuusai" %% "shapeless" % "2.3.2",
     "com.typesafe.akka" %% "akka-http-spray-json-experimental" % akkaHttpV
   ) ++ baseDependencies ++ googleApiClientDependencies ++
     // TODO: We're not using the "F" in slf4j. Core only supports logback, specifically the WorkflowLogger.

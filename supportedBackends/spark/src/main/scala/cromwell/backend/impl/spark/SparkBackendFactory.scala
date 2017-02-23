@@ -16,6 +16,7 @@ case class SparkBackendFactory(name: String, configurationDescriptor: BackendCon
   override def jobExecutionActorProps(jobDescriptor: BackendJobDescriptor,
                                       initializationData: Option[BackendInitializationData],
                                       serviceRegistryActor: ActorRef,
+                                      ioActor: ActorRef,
                                       backendSingletonActor: Option[ActorRef]): Props = {
     SparkJobExecutionActor.props(jobDescriptor, configurationDescriptor)
   }

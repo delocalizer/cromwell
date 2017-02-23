@@ -35,6 +35,7 @@ class EngineJobExecutionActor(replyTo: ActorRef,
                               initializationData: Option[BackendInitializationData],
                               restarting: Boolean,
                               val serviceRegistryActor: ActorRef,
+                              ioActor: ActorRef,
                               jobStoreActor: ActorRef,
                               callCacheReadActor: ActorRef,
                               jobTokenDispenserActor: ActorRef,
@@ -310,7 +311,7 @@ class EngineJobExecutionActor(replyTo: ActorRef,
   def createJobPreparationActor(jobPrepProps: Props, name: String): ActorRef = context.actorOf(jobPrepProps, name)
   def prepareJob() = {
     val jobPreparationActorName = s"BackendPreparationActor_for_$jobTag"
-    val jobPrepProps = JobPreparationActor.props(executionData, jobDescriptorKey, factory, initializationData, serviceRegistryActor, backendSingletonActor)
+    val jobPrepProps = JobPreparationActor.props(executionData, jobDescriptorKey, factory, initializationData, serviceRegistryActor, ioActor, backendSingletonActor)
     val jobPreparationActor = createJobPreparationActor(jobPrepProps, jobPreparationActorName)
     jobPreparationActor ! CallPreparationActor.Start
     goto(PreparingJob)
@@ -497,6 +498,7 @@ object EngineJobExecutionActor {
             initializationData: Option[BackendInitializationData],
             restarting: Boolean,
             serviceRegistryActor: ActorRef,
+            ioActor: ActorRef,
             jobStoreActor: ActorRef,
             callCacheReadActor: ActorRef,
             jobTokenDispenserActor: ActorRef,
@@ -511,6 +513,7 @@ object EngineJobExecutionActor {
       initializationData = initializationData,
       restarting = restarting,
       serviceRegistryActor = serviceRegistryActor,
+      ioActor = ioActor,
       jobStoreActor = jobStoreActor,
       callCacheReadActor = callCacheReadActor,
       jobTokenDispenserActor = jobTokenDispenserActor,

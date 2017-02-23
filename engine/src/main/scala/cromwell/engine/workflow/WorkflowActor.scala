@@ -16,8 +16,8 @@ import cromwell.engine.workflow.lifecycle.MaterializeWorkflowDescriptorActor.{Ma
 import cromwell.engine.workflow.lifecycle.WorkflowFinalizationActor.{StartFinalizationCommand, WorkflowFinalizationFailedResponse, WorkflowFinalizationSucceededResponse}
 import cromwell.engine.workflow.lifecycle.WorkflowInitializationActor.{StartInitializationCommand, WorkflowInitializationFailedResponse, WorkflowInitializationSucceededResponse}
 import cromwell.engine.workflow.lifecycle._
-import cromwell.engine.workflow.lifecycle.execution.{WorkflowExecutionActor, WorkflowMetadataHelper}
 import cromwell.engine.workflow.lifecycle.execution.WorkflowExecutionActor._
+import cromwell.engine.workflow.lifecycle.execution.{WorkflowExecutionActor, WorkflowMetadataHelper}
 import cromwell.subworkflowstore.SubWorkflowStoreActor.WorkflowComplete
 import cromwell.webservice.EngineStatsActor
 import wdl4s.{LocallyQualifiedName => _}

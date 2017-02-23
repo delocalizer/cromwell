@@ -4,6 +4,7 @@ import java.net.SocketTimeoutException
 
 import akka.actor.ActorRef
 import com.google.api.client.googleapis.json.GoogleJsonResponseException
+import com.google.cloud.storage.contrib.nio.CloudStorageOptions
 import cromwell.backend._
 import cromwell.backend.async.{AbortedExecutionHandle, ExecutionHandle, FailedNonRetryableExecutionHandle, FailedRetryableExecutionHandle, PendingExecutionHandle}
 import cromwell.backend.impl.jes.RunStatus.TerminalRunStatus
@@ -240,11 +241,11 @@ class JesAsyncBackendJobExecutionActor(override val standardParams: StandardAsyn
 
   override def isTransient(throwable: Throwable): Boolean = isTransientJesException(throwable)
 
-  override def execute(): ExecutionHandle = {
+  override def executeAsync()(implicit ec: ExecutionContext): Future[ExecutionHandle] = {
     runWithJes(None)
   }
 
-  protected def runWithJes(runIdForResumption: Option[String]): ExecutionHandle = {
+  protected def runWithJes(runIdForResumption: Option[String]): Future[ExecutionHandle] = {
     // Force runtimeAttributes to evaluate so we can fail quickly now if we need to:
     Try(runtimeAttributes) match {
       case Success(_) =>
@@ -253,10 +254,13 @@ class JesAsyncBackendJobExecutionActor(override val standardParams: StandardAsyn
 
         val jesParameters = standardParameters ++ gcsAuthParameter ++ jesInputs ++ jesOutputs
 
-        jobPaths.script.writeAsText(commandScriptContents)
         val run = createJesRun(jesParameters, runIdForResumption)
-        PendingExecutionHandle(jobDescriptor, StandardAsyncJob(run.runId), Option(run), previousStatus = None)
-      case Failure(e) => FailedNonRetryableExecutionHandle(e)
+        writeAsync(jobPaths.script, commandScriptContents, Seq(CloudStorageOptions.withMimeType("text/plain"))) map { _ => 
+          PendingExecutionHandle(jobDescriptor, StandardAsyncJob(run.runId), Option(run), previousStatus = None) 
+        } recover {
+          case failure => FailedNonRetryableExecutionHandle(failure)
+        }
+      case Failure(e) => Future.successful(FailedNonRetryableExecutionHandle(e))
     }
   }
 

@@ -66,6 +66,7 @@ private[ejea] class PerTestHelper(implicit val system: ActorSystem) extends Mock
   val replyToProbe = TestProbe()
   val parentProbe = TestProbe()
   val serviceRegistryProbe = TestProbe()
+  val ioActorProbe = TestProbe()
   val jobStoreProbe = TestProbe()
   val callCacheReadActorProbe = TestProbe()
   val callCacheHitCopyingProbe = TestProbe()
@@ -77,6 +78,7 @@ private[ejea] class PerTestHelper(implicit val system: ActorSystem) extends Mock
     override def jobExecutionActorProps(jobDescriptor: BackendJobDescriptor,
                                         initializationData: Option[BackendInitializationData],
                                         serviceRegistryActor: ActorRef,
+                                        ioActor: ActorRef,
                                         backendSingletonActor: Option[ActorRef]): Props = bjeaProps
 
     override def cacheHitCopyingActorProps: Option[(BackendJobDescriptor, Option[BackendInitializationData], ActorRef) => Props] = Option((_, _, _) => callCacheHitCopyingProbe.props)
@@ -115,6 +117,7 @@ private[ejea] class PerTestHelper(implicit val system: ActorSystem) extends Mock
       initializationData = None,
       restarting = restarting,
       serviceRegistryActor = serviceRegistryProbe.ref,
+      ioActor = ioActorProbe.ref,
       jobStoreActor = jobStoreProbe.ref,
       callCacheReadActor = callCacheReadActorProbe.ref,
       jobTokenDispenserActor = jobTokenDispenserProbe.ref,
@@ -136,11 +139,12 @@ private[ejea] class MockEjea(helper: PerTestHelper,
                              initializationData: Option[BackendInitializationData],
                              restarting: Boolean,
                              serviceRegistryActor: ActorRef,
+                             ioActor: ActorRef,
                              jobStoreActor: ActorRef,
                              callCacheReadActor: ActorRef,
                              jobTokenDispenserActor: ActorRef,
                              backendName: String,
-                             callCachingMode: CallCachingMode) extends EngineJobExecutionActor(replyTo, jobDescriptorKey, executionData, factory, initializationData, restarting, serviceRegistryActor, jobStoreActor, callCacheReadActor, jobTokenDispenserActor, None, backendName, callCachingMode) {
+                             callCachingMode: CallCachingMode) extends EngineJobExecutionActor(replyTo, jobDescriptorKey, executionData, factory, initializationData, restarting, serviceRegistryActor, ioActor, jobStoreActor, callCacheReadActor, jobTokenDispenserActor, None, backendName, callCachingMode) {
 
   override def makeFetchCachedResultsActor(cacheId: CallCachingEntryId, taskOutputs: Seq[TaskOutput]) = helper.fetchCachedResultsActorCreations = helper.fetchCachedResultsActorCreations.foundOne((cacheId, taskOutputs))
   override def initializeJobHashing(jobDescriptor: BackendJobDescriptor, activity: CallCachingActivity) = helper.jobHashingInitializations = helper.jobHashingInitializations.foundOne((jobDescriptor, activity))

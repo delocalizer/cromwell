@@ -32,6 +32,7 @@ import wdl4s.values.{WdlArray, WdlFile, WdlMap, WdlString, WdlValue}
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future, Promise}
+import scala.language.postfixOps
 import scala.util.{Success, Try}
 
 class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackendJobExecutionActorSpec")
@@ -96,6 +97,7 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
       this(
         DefaultStandardAsyncExecutionActorParams(
           JesAsyncBackendJobExecutionActor.JesOperationIdKey,
+          emptyActor,
           emptyActor,
           jobDescriptor,
           jesConfiguration.configurationDescriptor,
@@ -181,6 +183,8 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
   }
 
   behavior of "JesAsyncBackendJobExecutionActor"
+  
+  val timeout = 5 seconds
 
   { // Set of "handle call failures appropriately with respect to preemption" tests
     val expectations = Table(
@@ -223,7 +227,7 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
 
     val failedStatus = Failed(10, Option("14: VM XXX shut down unexpectedly."), Seq.empty, Option("fakeMachine"), Option("fakeZone"), Option("fakeInstance"))
     val executionResult = jesBackend.handleExecutionResult(failedStatus, handle)
-    executionResult.isInstanceOf[FailedNonRetryableExecutionHandle] shouldBe true
+    Await.result(executionResult, timeout).isInstanceOf[FailedNonRetryableExecutionHandle] shouldBe true
     val failedHandle = executionResult.asInstanceOf[FailedNonRetryableExecutionHandle]
     failedHandle.returnCode shouldBe None
   }
@@ -235,7 +239,7 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
 
     val failedStatus = Failed(10, Option("14: VM XXX shut down unexpectedly."), Seq.empty, Option("fakeMachine"), Option("fakeZone"), Option("fakeInstance"))
     val executionResult = jesBackend.handleExecutionResult(failedStatus, handle)
-    executionResult.isInstanceOf[FailedRetryableExecutionHandle] shouldBe true
+    Await.result(executionResult, timeout).isInstanceOf[FailedRetryableExecutionHandle] shouldBe true
     val retryableHandle = executionResult.asInstanceOf[FailedRetryableExecutionHandle]
     retryableHandle.throwable.isInstanceOf[PreemptedException] shouldBe true
     retryableHandle.returnCode shouldBe None
@@ -250,7 +254,7 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
 
     val failedStatus = Failed(10, Option("14: VM XXX shut down unexpectedly."), Seq.empty, Option("fakeMachine"), Option("fakeZone"), Option("fakeInstance"))
     val executionResult = jesBackend.handleExecutionResult(failedStatus, handle)
-    executionResult.isInstanceOf[FailedRetryableExecutionHandle] shouldBe true
+    Await.result(executionResult, timeout).isInstanceOf[FailedRetryableExecutionHandle] shouldBe true
     val retryableHandle = executionResult.asInstanceOf[FailedRetryableExecutionHandle]
     retryableHandle.throwable.isInstanceOf[PreemptedException] shouldBe true
     retryableHandle.returnCode shouldBe None
@@ -266,7 +270,7 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
     def checkFailedResult(errorCode: Int, errorMessage: Option[String]): ExecutionHandle = {
       val failed =
         Failed(errorCode, errorMessage, Seq.empty, Option("fakeMachine"), Option("fakeZone"), Option("fakeInstance"))
-      jesBackend.handleExecutionResult(failed, handle)
+      Await.result(jesBackend.handleExecutionResult(failed, handle), timeout)
     }
 
     checkFailedResult(10, Option("15: Other type of error."))

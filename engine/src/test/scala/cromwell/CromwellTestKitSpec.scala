@@ -53,6 +53,7 @@ case class TestBackendLifecycleActorFactory(configurationDescriptor: BackendConf
   override def jobExecutionActorProps(jobDescriptor: BackendJobDescriptor,
                                       initializationData: Option[BackendInitializationData],
                                       serviceRegistryActor: ActorRef,
+                                      ioActor: ActorRef,
                                       backendSingletonActor: Option[ActorRef]): Props = {
     throw new NotImplementedError("this is not implemented")
   }

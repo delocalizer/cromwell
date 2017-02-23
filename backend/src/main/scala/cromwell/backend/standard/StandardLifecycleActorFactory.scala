@@ -82,17 +82,19 @@ trait StandardLifecycleActorFactory extends BackendLifecycleActorFactory {
   override def jobExecutionActorProps(jobDescriptor: BackendJobDescriptor,
                                       initializationDataOption: Option[BackendInitializationData],
                                       serviceRegistryActor: ActorRef,
+                                      ioActor: ActorRef,
                                       backendSingletonActorOption: Option[ActorRef]): Props = {
     val params = jobExecutionActorParams(jobDescriptor, initializationDataOption, serviceRegistryActor,
-      backendSingletonActorOption)
+      ioActor, backendSingletonActorOption)
     Props(new StandardSyncExecutionActor(params)).withDispatcher(Dispatcher.BackendDispatcher)
   }
 
   def jobExecutionActorParams(jobDescriptor: BackendJobDescriptor,
                               initializationDataOption: Option[BackendInitializationData],
                               serviceRegistryActor: ActorRef,
+                              ioActor: ActorRef,
                               backendSingletonActorOption: Option[ActorRef]): StandardSyncExecutionActorParams = {
-    DefaultStandardSyncExecutionActorParams(jobIdKey, serviceRegistryActor, jobDescriptor, configurationDescriptor,
+    DefaultStandardSyncExecutionActorParams(jobIdKey, serviceRegistryActor, ioActor, jobDescriptor, configurationDescriptor,
       initializationDataOption, backendSingletonActorOption, asyncExecutionActorClass)
   }
 

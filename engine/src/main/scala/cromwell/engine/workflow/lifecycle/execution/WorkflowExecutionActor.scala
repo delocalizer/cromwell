@@ -445,7 +445,7 @@ case class WorkflowExecutionActor(workflowDescriptor: EngineWorkflowDescriptor,
             val ejeaName = s"${workflowDescriptor.id}-EngineJobExecutionActor-${jobKey.tag}"
             val backendSingleton = backendSingletonCollection.backendSingletonActors(backendName)
             val ejeaProps = EngineJobExecutionActor.props(
-              self, jobKey, data, factory, initializationData.get(backendName), restarting, serviceRegistryActor,
+              self, jobKey, data, factory, initializationData.get(backendName), restarting, serviceRegistryActor, ioActor,
               jobStoreActor, callCacheReadActor, jobTokenDispenserActor, backendSingleton, backendName, workflowDescriptor.callCachingMode)
             val ejeaRef = context.actorOf(ejeaProps, ejeaName)
             context watch ejeaRef

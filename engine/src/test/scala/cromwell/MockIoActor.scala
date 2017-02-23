@@ -1,7 +1,7 @@
 package cromwell
 
 import akka.actor.{Actor, Props}
-import cromwell.core.io.messages._
+import cromwell.core.io._
 
 object MockIoActor {
   def props = Props(new MockIoActor)
@@ -9,10 +9,10 @@ object MockIoActor {
 
 class MockIoActor extends Actor {
   override def receive = {
-    case command: CopyCommandMessage => sender() ! IoSuccess(command, ())
-    case command: WriteCommandMessage => sender() ! IoSuccess(command, ())
-    case command: DeleteCommandMessage => sender() ! IoSuccess(command, ())
-    case command: SizeCommandMessage => sender() ! IoSuccess(command, 100L)
-    case command: ReadAsStringCommandMessage => sender() ! IoSuccess(command, "hello")
+    case command: IoCopyCommand => sender() ! IoSuccess(command, ())
+    case command: IoWriteCommand => sender() ! IoSuccess(command, ())
+    case command: IoDeleteCommand => sender() ! IoSuccess(command, ())
+    case command: IoSizeCommand => sender() ! IoSuccess(command, 100L)
+    case command: IoContentAsStringCommand => sender() ! IoSuccess(command, "hello")
   }
 }

@@ -21,6 +21,7 @@ trait BackendLifecycleActorFactory {
   def jobExecutionActorProps(jobDescriptor: BackendJobDescriptor,
                              initializationData: Option[BackendInitializationData],
                              serviceRegistryActor: ActorRef,
+                             ioActor: ActorRef,
                              backendSingletonActor: Option[ActorRef]): Props
 
   /**

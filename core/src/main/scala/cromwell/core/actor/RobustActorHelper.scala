@@ -20,7 +20,7 @@ object RobustActorHelper {
 
 trait RobustActorHelper { this: Actor with ActorLogging =>
   private [actor] var requestsMap = Map.empty[RobustActorMessage, StreamClientTimers]
-  private implicit val backpressureEc = context.dispatcher
+  private [actor] implicit val robuseActorHelperEc = context.dispatcher
 
   protected def requestLostAttempts: Int = 2
   protected def lostTimeout: FiniteDuration = 20 seconds
@@ -55,12 +55,10 @@ trait RobustActorHelper { this: Actor with ActorLogging =>
     requestsMap = requestsMap updated (robustMessage, timers)
   }
 
-  private def robustReceive: Receive = {
+  protected def robustReceive: Receive = {
     case Backpressure(request) => handleBackpressure(request)
     case NoResponseTimeout(robustActorMessage) => handleRequestLost(robustActorMessage)
   }
-
-  context.become(robustReceive.orElse(receive))
 
   /* Sends a message to self after lostTimeout. 
    * This covers the case where the request has been dropped by the receiver

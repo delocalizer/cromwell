@@ -55,6 +55,7 @@ final case class JobPreparationActor(executionData: WorkflowExecutionActorData,
                                      factory: BackendLifecycleActorFactory,
                                      initializationData: Option[BackendInitializationData],
                                      serviceRegistryActor: ActorRef,
+                                     ioActor: ActorRef,
                                      backendSingletonActor: Option[ActorRef])
   extends CallPreparationActor(executionData.workflowDescriptor, executionData.outputStore, jobKey) {
 
@@ -69,7 +70,7 @@ final case class JobPreparationActor(executionData: WorkflowExecutionActorData,
       evaluatedRuntimeAttributes <- evaluateRuntimeAttributes(unevaluatedRuntimeAttributes, expressionLanguageFunctions, inputEvaluation)
       attributesWithDefault = curriedAddDefaultsToAttributes(evaluatedRuntimeAttributes)
       jobDescriptor = BackendJobDescriptor(workflowDescriptor.backendDescriptor, jobKey, attributesWithDefault, inputEvaluation)
-    } yield BackendJobPreparationSucceeded(jobDescriptor, factory.jobExecutionActorProps(jobDescriptor, initializationData, serviceRegistryActor, backendSingletonActor))) match {
+    } yield BackendJobPreparationSucceeded(jobDescriptor, factory.jobExecutionActorProps(jobDescriptor, initializationData, serviceRegistryActor, ioActor, backendSingletonActor))) match {
       case Success(s) => s
       case Failure(f) => CallPreparationFailed(jobKey, f)
     }
@@ -115,6 +116,7 @@ object JobPreparationActor {
             factory: BackendLifecycleActorFactory,
             initializationData: Option[BackendInitializationData],
             serviceRegistryActor: ActorRef,
+            ioActor: ActorRef,
             backendSingletonActor: Option[ActorRef]) = {
     // Note that JobPreparationActor doesn't run on the engine dispatcher as it mostly executes backend-side code
     // (WDL expression evaluation using Backend's expressionLanguageFunctions)
@@ -123,6 +125,7 @@ object JobPreparationActor {
       factory,
       initializationData,
       serviceRegistryActor,
+      ioActor,
       backendSingletonActor)).withDispatcher(EngineDispatcher)
   }
 }
