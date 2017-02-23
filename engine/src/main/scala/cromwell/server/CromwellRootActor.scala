@@ -3,14 +3,13 @@ package cromwell.server
 import akka.actor.SupervisorStrategy.{Escalate, Restart}
 import akka.actor.{Actor, ActorInitializationException, ActorRef, OneForOneStrategy}
 import akka.event.Logging
-import akka.routing.RoundRobinPool
+import akka.routing.{RoundRobinGroup, RoundRobinPool}
 import akka.stream.ActorMaterializer
 import com.typesafe.config.ConfigFactory
 import cromwell.core.Dispatcher
 import cromwell.core.actor.StreamIntegration.EnqueuingException
-import cromwell.core.io.Throttle
 import cromwell.engine.backend.{BackendSingletonCollection, CromwellBackends}
-import cromwell.engine.io.{IoActor, IoFlow}
+import cromwell.engine.io.IoWorkers
 import cromwell.engine.workflow.WorkflowManagerActor
 import cromwell.engine.workflow.lifecycle.CopyWorkflowLogsActor
 import cromwell.engine.workflow.lifecycle.execution.callcaching.{CallCache, CallCacheReadActor}
@@ -21,9 +20,6 @@ import cromwell.services.{ServiceRegistryActor, SingletonServicesStore}
 import cromwell.subworkflowstore.{SqlSubWorkflowStore, SubWorkflowStoreActor}
 import net.ceedubs.ficus.Ficus._
 
-import scala.concurrent.duration._
-import scala.language.postfixOps
-import scala.concurrent.duration.FiniteDuration
 /**
   * An actor which serves as the lord protector for the rest of Cromwell, allowing us to have more fine grain
   * control on top level supervision, etc.
@@ -62,12 +58,17 @@ import scala.concurrent.duration.FiniteDuration
   lazy val subWorkflowStore = new SqlSubWorkflowStore(SingletonServicesStore.databaseInterface)
   lazy val subWorkflowStoreActor = context.actorOf(SubWorkflowStoreActor.props(subWorkflowStore), "SubWorkflowStoreActor")
   
-  lazy val ioParallelism = systemConfig.as[Option[Int]]("io.parallelism").getOrElse(100000)
-  lazy val throttleElements = systemConfig.as[Option[Int]]("io.number-of-requests").getOrElse(100000)
-  lazy val throttlePer = systemConfig.as[Option[FiniteDuration]]("io.per").getOrElse(100 seconds)
-  lazy val ioThrottle = Throttle(throttleElements, throttlePer, throttleElements)
-  lazy val ioFlow = new IoFlow(ioParallelism, Option(ioThrottle))(ioEc)
-  lazy val ioActor = context.actorOf(IoActor.props(1000, ioFlow).withDispatcher(Dispatcher.IoDispatcher))
+  // Flow version
+  lazy val ioParallelism = systemConfig.as[Option[Int]]("io.parallelism").getOrElse(100)
+//  lazy val throttleElements = systemConfig.as[Option[Int]]("io.number-of-requests").getOrElse(100000)
+//  lazy val throttlePer = systemConfig.as[Option[FiniteDuration]]("io.per").getOrElse(100 seconds)
+//  lazy val ioThrottle = Throttle(throttleElements, throttlePer, throttleElements)
+//  lazy val ioFlow = new IoFlow(ioParallelism, Option(ioThrottle))(ioEc)
+//  lazy val ioActor = context.actorOf(IoActor.props(1000, ioFlow).withDispatcher(Dispatcher.IoDispatcher))
+  
+  context.actorOf(IoWorkers.props(ioParallelism), "io-workers")
+  lazy val ioWorkerPaths = 1 to ioParallelism map { i => s"${self.path}/io-workers/io-worker-$i" }
+  lazy val ioActor = context.actorOf(RoundRobinGroup(ioWorkerPaths).props(), "io-router-actor")
 
   lazy val callCache: CallCache = new CallCache(SingletonServicesStore.databaseInterface)
   lazy val callCacheReadActor = context.actorOf(RoundRobinPool(25)

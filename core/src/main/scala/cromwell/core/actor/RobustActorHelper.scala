@@ -10,7 +10,7 @@ import scala.language.postfixOps
 object RobustActorHelper {
   case class NoResponseTimeout(robustActorRequest: RobustActorMessage)
   case class RobustActorMessage(message: Any, to: ActorRef)
-  private [actor] case class StreamClientTimers(backpressureTimer: Option[Cancellable], timeoutTimer: Cancellable, requestLostCounter: Int) {
+  private [actor] case class StreamClientTimers(backpressureTimer: Option[Cancellable], timeoutTimer: Cancellable, requestAttemptsCounter: Int) {
     def cancelTimers() = {
       backpressureTimer foreach { _.cancel() }
       timeoutTimer.cancel()
@@ -49,7 +49,7 @@ trait RobustActorHelper { this: Actor with ActorLogging =>
     val timers = StreamClientTimers(
       backpressureTimer = None,
       timeoutTimer = newRequestLostTimer(robustMessage),
-      0
+      1
     )
     to ! message
     requestsMap = requestsMap updated (robustMessage, timers)
@@ -93,7 +93,8 @@ trait RobustActorHelper { this: Actor with ActorLogging =>
         // Create new timers, including an exponential backoff timer
         val newTimers = timers.copy(
           backpressureTimer = Option(newBackPressureTimer(robustMessage)),
-          timeoutTimer = newRequestLostTimer(robustMessage)
+          timeoutTimer = newRequestLostTimer(robustMessage),
+          1
         )
         // Update the internal map
         requestsMap = requestsMap updated (robustMessage, newTimers)
@@ -107,19 +108,20 @@ trait RobustActorHelper { this: Actor with ActorLogging =>
       case Some(timers) =>
         timers.cancelTimers()
 
-        if (timers.requestLostCounter < requestLostAttempts) {
+        if (timers.requestAttemptsCounter < requestLostAttempts) {
           // Create a new requestLost timer and increment requestLostCounter
           val newTimers = StreamClientTimers(
             backpressureTimer = None,
             timeoutTimer = newRequestLostTimer(robustMessage),
-            timers.requestLostCounter + 1
+            timers.requestAttemptsCounter + 1
           )
           // Update the internal map
           requestsMap = requestsMap updated(robustMessage, newTimers)
           // Resend the message
           robustMessage.to ! robustMessage.message
         } else {
-          // If we reach requestLostAttempts, just declare the service unreachable
+          // If we reach requestLostAttempts, declare the service unreachable and remove from the map
+          requestsMap = requestsMap - robustMessage
           onServiceUnreachable(robustMessage)
         }
       case None =>
