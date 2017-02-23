@@ -63,8 +63,11 @@ class IoWorkerActor extends Actor with ActorLogging {
       case Success(None) =>
         context.parent ! BackoffSupervisor.Reset
       case Failure(failure) if isRetryable(failure) =>
-        log.error("Failed to execute IO operation")
+        log.error("Failed to execute IO operation - Retrying")
         throw failure
+      case Failure(failure) =>
+        command.fail(failure)
+        ()
     }
   }
   

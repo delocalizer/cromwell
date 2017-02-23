@@ -25,7 +25,7 @@ case class TesBackendLifecycleActorFactory(name: String, configurationDescriptor
     JobExecutionTokenType(name, concurrentJobLimit)
   }
 
-  override def workflowInitializationActorParams(workflowDescriptor: BackendWorkflowDescriptor, calls: Set[TaskCall],
+  override def workflowInitializationActorParams(workflowDescriptor: BackendWorkflowDescriptor, ioActor: ActorRef, calls: Set[TaskCall],
                                                  serviceRegistryActor: ActorRef): StandardInitializationActorParams = {
     TesInitializationActorParams(workflowDescriptor, calls, tesConfiguration, serviceRegistryActor)
   }
