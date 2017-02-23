@@ -56,7 +56,9 @@ class JesInitializationActor(jesParams: JesInitializationActorParams)
     publishWorkflowRoot(workflowPaths.workflowRoot.pathAsString)
     if (jesConfiguration.needAuthFileUpload) {
       writeAuthenticationFile(workflowPaths)
-      uploadAuthFilePromise.future map { _ => Option(initializationData) }
+      uploadAuthFilePromise.future map { _ => Option(initializationData) } recoverWith {
+        case _ => Future.failed(new IOException("Failed to upload authentication file")) 
+      }
     } else {
       Future.successful(Option(initializationData))
     }
