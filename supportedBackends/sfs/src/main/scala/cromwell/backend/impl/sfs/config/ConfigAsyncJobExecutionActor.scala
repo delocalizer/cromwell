@@ -64,23 +64,28 @@ sealed trait ConfigAsyncJobExecutionActor extends SharedFileSystemAsyncJobExecut
   private lazy val standardInputs: WorkflowCoercedInputs = {
     Map(
       JobNameInput -> WdlString(jobName),
-      CwdInput -> WdlString(jobPaths.callRoot.pathAsString),
-      StdoutInput -> WdlString(jobPaths.stdout.pathAsString),
-      StderrInput -> WdlString(jobPaths.stderr.pathAsString),
-      ScriptInput -> WdlString(jobPaths.script.pathAsString)
+      CwdInput -> WdlString(jobPaths.callRoot.pathAsString)
     )
   }
 
   /**
-    * Extra arguments if this is a submit-docker command, or Map.empty.
+    * The inputs that are not specified by the config, that will be passed into a command for either submit or
+    * submit-docker.
     */
   private lazy val dockerInputs: WorkflowCoercedInputs = {
     if (isDockerRun) {
       Map(
-        DockerCwdInput -> WdlString(jobPathsWithDocker.callDockerRoot.pathAsString)
+        DockerCwdInput -> WdlString(jobPathsWithDocker.callDockerRoot.pathAsString),
+        StdoutInput -> WdlString(jobPathsWithDocker.toDockerPath(jobPaths.stdout).pathAsString),
+        StderrInput -> WdlString(jobPathsWithDocker.toDockerPath(jobPaths.stderr).pathAsString),
+        ScriptInput -> WdlString(jobPathsWithDocker.toDockerPath(jobPaths.script).pathAsString)
       )
     } else {
-      Map.empty
+      Map(
+        StdoutInput -> WdlString(jobPaths.stdout.pathAsString),
+        StderrInput -> WdlString(jobPaths.stderr.pathAsString),
+        ScriptInput -> WdlString(jobPaths.script.pathAsString)
+      )
     }
   }
 
