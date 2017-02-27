@@ -263,38 +263,39 @@ case class WorkflowExecutionActor(workflowDescriptor: EngineWorkflowDescriptor,
     import cromwell.util.JsonFormatting.WdlValueJsonFormatter._
     import spray.json._
 
-    val responseAndFinalStateTry: Try[(WorkflowExecutionActorResponse, WorkflowExecutionActorState)] =
-      workflowDescriptor.workflow.evaluateOutputs(
-        workflowDescriptor.knownValues,
-        data.expressionLanguageFunctions,
-        data.outputStore.fetchNodeOutputEntries
-      ) map { workflowOutputs =>
-        // For logging and metadata
-        val workflowScopeOutputs = workflowOutputs map {
-          case (output, value) => output.locallyQualifiedName(workflowDescriptor.workflow) -> value
-        }
-        workflowLogger.info(
-          s"""Workflow ${workflowDescriptor.workflow.unqualifiedName} complete. Final Outputs:
+    case class ResponseAndFinalState(response: WorkflowExecutionActorResponse,
+                                     finalState: WorkflowExecutionActorTerminalState)
+
+    val responseAndState = workflowDescriptor.workflow.evaluateOutputs(
+      workflowDescriptor.knownValues,
+      data.expressionLanguageFunctions,
+      data.outputStore.fetchNodeOutputEntries
+    ) map { workflowOutputs =>
+       // For logging and metadata
+       val workflowScopeOutputs = workflowOutputs map {
+         case (output, value) => output.locallyQualifiedName(workflowDescriptor.workflow) -> value
+       }
+       workflowLogger.info(
+         s"""Workflow ${workflowDescriptor.workflow.unqualifiedName} complete. Final Outputs:
              |${workflowScopeOutputs.stripLarge.toJson.prettyPrint}""".stripMargin
-        )
-        pushWorkflowOutputMetadata(workflowScopeOutputs)
+       )
+       pushWorkflowOutputMetadata(workflowScopeOutputs)
 
-        // For cromwell internal storage of outputs
-        val unqualifiedWorkflowOutputs = workflowOutputs map {
-          // JobOutput is poorly named here - a WorkflowOutput type would be better
-          case (output, value) => output.unqualifiedName -> JobOutput(value)
-        }
-        (WorkflowExecutionSucceededResponse(data.jobExecutionMap, unqualifiedWorkflowOutputs),
-          WorkflowExecutionSuccessfulState)
-      }
-
-    val (response, finalState) = responseAndFinalStateTry recover {
-      case throwable =>
-        (WorkflowExecutionFailedResponse(data.jobExecutionMap, throwable), WorkflowExecutionFailedState)
+       // For cromwell internal storage of outputs
+       val unqualifiedWorkflowOutputs = workflowOutputs map {
+         // JobOutput is poorly named here - a WorkflowOutput type would be better
+         case (output, value) => output.unqualifiedName -> JobOutput(value)
+       }
+      ResponseAndFinalState(
+        WorkflowExecutionSucceededResponse(data.jobExecutionMap, unqualifiedWorkflowOutputs),
+        WorkflowExecutionSuccessfulState)
+    } recover {
+       case ex =>
+         ResponseAndFinalState(WorkflowExecutionFailedResponse(data.jobExecutionMap, ex), WorkflowExecutionFailedState)
     } get
     
-    context.parent ! response
-    goto(finalState) using data
+    context.parent ! responseAndState.response
+    goto(responseAndState.finalState) using data
   }
 
   private def handleRetryableFailure(jobKey: BackendJobDescriptorKey, reason: Throwable, returnCode: Option[Int]) = {
@@ -506,7 +507,8 @@ case class WorkflowExecutionActor(workflowDescriptor: EngineWorkflowDescriptor,
         val conditionalStatus = if (b.value) ExecutionStatus.Done else ExecutionStatus.Bypassed
         val result = WorkflowExecutionDiff(conditionalKey.populate(workflowDescriptor.knownValues) + (conditionalKey -> conditionalStatus))
         result
-      case _: WdlValue => throw new RuntimeException("'if' condition must evaluate to a boolean")
+      case v: WdlValue => throw new RuntimeException(
+        s"'if' condition must evaluate to a boolean but instead got ${v.wdlType.toWdlString}")
     }
   }
 
@@ -523,7 +525,8 @@ case class WorkflowExecutionActor(workflowDescriptor: EngineWorkflowDescriptor,
       scatterKey.scope.collection.evaluate(lookup, data.expressionLanguageFunctions) map {
         case a: WdlArray =>
           WorkflowExecutionDiff(scatterKey.populate(a.value.size, workflowDescriptor.knownValues) + (scatterKey -> ExecutionStatus.Done))
-        case _: WdlValue => throw new RuntimeException("Scatter collection must evaluate to an array")
+        case v: WdlValue => throw new RuntimeException(
+          s"Scatter collection must evaluate to an array but instead got ${v.wdlType.toWdlString}")
       }
     }
   }
