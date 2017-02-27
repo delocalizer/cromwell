@@ -386,6 +386,28 @@ case class WorkflowExecutionActor(workflowDescriptor: EngineWorkflowDescriptor,
         self ! JobInitializationFailed(scope, throwable)
         Failure(throwable)
     } collect {
+      /*
+      NOTE: This is filtering out all errors and only returning the successes, but only after the map above sent a
+      message that something is wrong.
+
+      We used to throw an aggregation exception of all the collected errors, but _nothing_ in cromwell is actually
+      expecting that. Thus the workflows were being left in a Running state, jobs were left dispatched, etc.
+
+      Meanwhile this actor and its children died or restarted, and one couldn't even attempt to abort the other jobs.
+
+      Now, in the previous map, we send a message to ourselves about _every_ failure. But this method does not attempt
+      to further process the errors. The failures enqueue in the actor mailbox, and are handled by this actor's receive.
+
+      At the moment, there is an issue in how this actor handles failure messages. That issue is tracked in:
+      https://github.com/broadinstitute/cromwell/issues/2029
+
+      Separately, we may also want to institute better supervision of actors, in general. But just throwing an exception
+      here doesn't actually force the correct handling.
+
+      See also:
+      https://github.com/broadinstitute/cromwell/issues/1414
+      https://github.com/broadinstitute/cromwell/issues/1874
+      */
       case Success(value) => value
     }
 
